@@ -1,0 +1,27 @@
+-- Fix search path for all remaining functions to address security warnings
+ALTER FUNCTION public.update_updated_at() SET search_path = 'public';
+ALTER FUNCTION public.set_deal_user_id() SET search_path = 'public';
+ALTER FUNCTION public.set_deal_created_by() SET search_path = 'public';
+ALTER FUNCTION public.is_admin(uuid) SET search_path = 'public';
+ALTER FUNCTION public.is_department_head(uuid) SET search_path = 'public';
+ALTER FUNCTION public.dept_head_can_update_profile(uuid) SET search_path = 'public';
+ALTER FUNCTION public.set_contact_user_id() SET search_path = 'public';
+ALTER FUNCTION public.validate_opportunity_organizations() SET search_path = 'public';
+ALTER FUNCTION public.track_opportunity_stage_change() SET search_path = 'public';
+ALTER FUNCTION public.get_admin_users() SET search_path = 'public';
+ALTER FUNCTION public.can_access_contact(uuid) SET search_path = 'public';
+ALTER FUNCTION public.create_deal_from_activity() SET search_path = 'public';
+ALTER FUNCTION public.set_updated_at() SET search_path = 'public';
+ALTER FUNCTION public.set_end_user_default() SET search_path = 'public';
+ALTER FUNCTION public.track_opportunity_stage_change_crm() SET search_path = 'public';
+ALTER FUNCTION public.track_pipeline_item_status_change() SET search_path = 'public';
+ALTER FUNCTION public.ensure_visit_has_mom_v2() SET search_path = 'public';
+ALTER FUNCTION public.create_opportunity_from_activity() SET search_path = 'public';
+ALTER FUNCTION public.enforce_organizations_approval() SET search_path = 'public';
+ALTER FUNCTION public.update_deals_updated_at() SET search_path = 'public';
+ALTER FUNCTION public.enforce_user_profile_role_change() SET search_path = 'public';
+ALTER FUNCTION public.handle_end_user_creation() SET search_path = 'public';
+ALTER FUNCTION public.check_pipeline_close_date() SET search_path = 'public';
+ALTER FUNCTION public.is_admin_or_dept_head(uuid) SET search_path = 'public';
+ALTER FUNCTION public.update_updated_at_column() SET search_path = 'public';
+ALTER FUNCTION public.handle_new_user() SET search_path = 'public';

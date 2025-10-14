@@ -1,0 +1,293 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Calendar, Clock, MapPin, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+interface DivisionCalendarViewProps {
+  selectedRep: string;
+  dateRange: string;
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  type: "meeting" | "call" | "demo" | "training";
+  startTime: Date;
+  endTime: Date;
+  location?: string;
+  attendees: {
+    name: string;
+    avatar?: string;
+    initials: string;
+    isExternal?: boolean;
+  }[];
+  customerName?: string;
+  priority: "high" | "medium" | "low";
+}
+
+export function TeamCalendarView({ selectedRep, dateRange }: DivisionCalendarViewProps) {
+  const navigate = useNavigate();
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [viewMode, setViewMode] = useState<"week" | "month">("week");
+  const [currentWeek, setCurrentWeek] = useState(new Date());
+
+  useEffect(() => {
+    // Mock data - in real app, fetch from API based on selectedRep and dateRange
+    const mockEvents: CalendarEvent[] = [
+      {
+        id: "1",
+        title: "Product Demo",
+        type: "demo",
+        startTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+        endTime: new Date(Date.now() + 3 * 60 * 60 * 1000), // 3 hours from now
+        location: "Conference Room A",
+        customerName: "TechStart Inc",
+        attendees: [
+          { name: "Sarah Johnson", initials: "SJ" },
+          { name: "Client Team", initials: "CT", isExternal: true }
+        ],
+        priority: "high"
+      },
+      {
+        id: "2",
+        title: "Team Standup",
+        type: "meeting",
+        startTime: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+        endTime: new Date(Date.now() + 24 * 60 * 60 * 1000 + 30 * 60 * 1000), // Tomorrow + 30min
+        location: "Virtual",
+        attendees: [
+          { name: "John Smith", initials: "JS" },
+          { name: "Mike Davis", initials: "MD" },
+          { name: "Lisa Chen", initials: "LC" }
+        ],
+        priority: "medium"
+      },
+      {
+        id: "3",
+        title: "Client Check-in",
+        type: "call",
+        startTime: new Date(Date.now() + 48 * 60 * 60 * 1000), // Day after tomorrow
+        endTime: new Date(Date.now() + 48 * 60 * 60 * 1000 + 45 * 60 * 1000), // + 45min
+        customerName: "Global Solutions Ltd",
+        attendees: [
+          { name: "Mike Davis", initials: "MD" },
+          { name: "Account Manager", initials: "AM", isExternal: true }
+        ],
+        priority: "medium"
+      },
+      {
+        id: "4",
+        title: "Sales Training",
+        type: "training",
+        startTime: new Date(Date.now() + 72 * 60 * 60 * 1000), // 3 days from now
+        endTime: new Date(Date.now() + 72 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000), // + 2 hours
+        location: "Training Room B",
+        attendees: [
+          { name: "All Team", initials: "AT" }
+        ],
+        priority: "low"
+      }
+    ];
+
+    setEvents(mockEvents);
+  }, [selectedRep, dateRange]);
+
+  const getEventTypeColor = (type: string) => {
+    switch (type) {
+      case "demo": return "bg-purple-100 text-purple-800 border-purple-200";
+      case "meeting": return "bg-blue-100 text-blue-800 border-blue-200";
+      case "call": return "bg-green-100 text-green-800 border-green-200";
+      case "training": return "bg-orange-100 text-orange-800 border-orange-200";
+      default: return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "high": return "border-l-red-500";
+      case "medium": return "border-l-yellow-500";
+      case "low": return "border-l-green-500";
+      default: return "border-l-gray-500";
+    }
+  };
+
+  const formatEventTime = (startTime: Date, endTime: Date) => {
+    const start = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const end = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${start} - ${end}`;
+  };
+
+  const formatEventDate = (date: Date) => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return "Today";
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return "Tomorrow";
+    } else {
+      return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+  };
+
+  // Group events by date
+  const groupedEvents = events.reduce((groups, event) => {
+    const date = event.startTime.toDateString();
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(event);
+    return groups;
+  }, {} as Record<string, CalendarEvent[]>);
+
+  const sortedDates = Object.keys(groupedEvents).sort((a, b) => 
+    new Date(a).getTime() - new Date(b).getTime()
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              Team Calendar
+            </CardTitle>
+            <CardDescription>
+              Upcoming events and meetings across your division
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center border rounded-md">
+              <Button 
+                variant={viewMode === "week" ? "default" : "ghost"} 
+                size="sm"
+                onClick={() => setViewMode("week")}
+                className="rounded-r-none border-r"
+              >
+                Week
+              </Button>
+              <Button 
+                variant={viewMode === "month" ? "default" : "ghost"} 
+                size="sm"
+                onClick={() => setViewMode("month")}
+                className="rounded-l-none"
+              >
+                Month
+              </Button>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/calendar')}
+            >
+              View Full Calendar
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      
+      <CardContent>
+        {/* Navigation */}
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-medium text-foreground">Upcoming Events</h4>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {viewMode === "week" ? "This Week" : "This Month"}
+            </span>
+            <Button variant="ghost" size="sm">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Events List */}
+        <div className="space-y-4">
+          {sortedDates.map((dateStr) => (
+            <div key={dateStr} className="space-y-2">
+              <h5 className="text-sm font-medium text-muted-foreground border-b pb-1">
+                {formatEventDate(new Date(dateStr))}
+              </h5>
+              
+              <div className="space-y-2">
+                {groupedEvents[dateStr].map((event) => (
+                  <div
+                    key={event.id}
+                    className={`p-3 bg-card border-l-4 ${getPriorityColor(event.priority)} rounded-lg hover:shadow-sm transition-shadow cursor-pointer`}
+                    onClick={() => navigate('/calendar')}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h6 className="font-medium text-foreground">{event.title}</h6>
+                          <Badge variant="secondary" className={`${getEventTypeColor(event.type)} text-xs`}>
+                            {event.type}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatEventTime(event.startTime, event.endTime)}
+                          </span>
+                          {event.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {event.location}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {event.customerName && (
+                          <p className="text-sm text-primary mb-2">
+                            Client: {event.customerName}
+                          </p>
+                        )}
+                        
+                        {/* Attendees */}
+                        <div className="flex items-center gap-2">
+                          <Users className="h-3 w-3 text-muted-foreground" />
+                          <div className="flex items-center gap-1">
+                            {event.attendees.slice(0, 3).map((attendee, index) => (
+                              <Avatar key={index} className="h-6 w-6">
+                                <AvatarImage src={attendee.avatar} />
+                                <AvatarFallback className={`text-xs ${attendee.isExternal ? 'bg-orange-100 text-orange-800' : 'bg-primary/10 text-primary'}`}>
+                                  {attendee.initials}
+                                </AvatarFallback>
+                              </Avatar>
+                            ))}
+                            {event.attendees.length > 3 && (
+                              <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
+                                <span className="text-xs text-muted-foreground">
+                                  +{event.attendees.length - 3}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {events.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No upcoming events scheduled.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
