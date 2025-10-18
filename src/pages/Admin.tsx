@@ -19,6 +19,8 @@ import { GlobalSettings } from '@/components/GlobalSettings';
 import { FxRateManagement } from '@/components/FxRateManagement';
 import { AuditLogViewer } from '@/components/AuditLogViewer';
 import { EntityScopedDashboard } from '@/components/EntityScopedDashboard';
+import { supabase } from '@/integrations/supabase/client';
+import { useDivisions } from '@/hooks/useDivisions';
 
 type RoleFilter = 'all' | 'account_manager' | 'head' | 'manager' | 'admin' | 'pending';
 
@@ -27,6 +29,9 @@ interface UserUpdate {
   role?: UserProfile['role'];
   title_id?: string;
   region_id?: string;
+  division_id?: string | null;
+  department_id?: string | null;
+  teamId?: string;
   isDirty: boolean;
 }
 
@@ -37,6 +42,22 @@ export default function Admin() {
   const { users, loading: usersLoading, refetch, updateUserProfile } = useAdminUsers(searchQuery, roleFilter);
   const { titles } = useTitles();
   const { regions } = useRegions();
+  const { divisions } = useDivisions();
+
+  const [departments, setDepartments] = useState<Array<{ id: string; name: string; division_id: string | null }>>([]);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('id, name, division_id')
+        .order('name', { ascending: true });
+      if (!alive) return;
+      setDepartments(error ? [] : (data || []));
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const [userUpdates, setUserUpdates] = useState<Record<string, UserUpdate>>({});
   const [savingUsers, setSavingUsers] = useState<Set<string>>(new Set());
@@ -92,7 +113,7 @@ export default function Admin() {
         if (updated[userId]) {
           delete updated[userId].title_id;
           // If no other changes, remove the entire entry
-          if (!updated[userId].role && !updated[userId].region_id) {
+          if (!updated[userId].role && !updated[userId].region_id && !updated[userId].division_id && !updated[userId].department_id) {
             delete updated[userId];
           }
         }
@@ -124,7 +145,7 @@ export default function Admin() {
         if (updated[userId]) {
           delete updated[userId].region_id;
           // If no other changes, remove the entire entry
-          if (!updated[userId].role && !updated[userId].title_id) {
+          if (!updated[userId].role && !updated[userId].title_id && !updated[userId].division_id && !updated[userId].department_id) {
             delete updated[userId];
           }
         }
@@ -133,8 +154,60 @@ export default function Admin() {
     }
   };
 
-  const handleDepartmentChange = (userId: string, departmentId: string) => {
-    // Department management removed - this function is deprecated
+  const handleDivisionChange = (userId: string, newDivisionId: string) => {
+    const user = users?.find(u => u.id === userId);
+    const currentDivisionId = user?.division_id || null;
+    const nextDivisionId = newDivisionId === 'none' ? null : (newDivisionId || null);
+    if (currentDivisionId !== nextDivisionId) {
+      setUserUpdates(prev => ({
+        ...prev,
+        [userId]: {
+          ...prev[userId],
+          userId,
+          division_id: nextDivisionId,
+          isDirty: true,
+        }
+      }));
+    } else {
+      setUserUpdates(prev => {
+        const updated = { ...prev };
+        if (updated[userId]) {
+          delete updated[userId].division_id;
+          if (!updated[userId].role && !updated[userId].title_id && !updated[userId].region_id && !updated[userId].department_id) {
+            delete updated[userId];
+          }
+        }
+        return updated;
+      });
+    }
+  };
+
+  const handleDepartmentChange = (userId: string, newDepartmentId: string) => {
+    const user = users?.find(u => u.id === userId);
+    const currentDepartmentId = user?.department_id || null;
+    const nextDepartmentId = newDepartmentId === 'none' ? null : (newDepartmentId || null);
+    if (currentDepartmentId !== nextDepartmentId) {
+      setUserUpdates(prev => ({
+        ...prev,
+        [userId]: {
+          ...prev[userId],
+          userId,
+          department_id: nextDepartmentId,
+          isDirty: true,
+        }
+      }));
+    } else {
+      setUserUpdates(prev => {
+        const updated = { ...prev };
+        if (updated[userId]) {
+          delete updated[userId].department_id;
+          if (!updated[userId].role && !updated[userId].title_id && !updated[userId].region_id && !updated[userId].division_id) {
+            delete updated[userId];
+          }
+        }
+        return updated;
+      });
+    }
   };
 
   const handleTeamChange = (userId: string, teamId: string) => {
@@ -156,11 +229,16 @@ export default function Admin() {
     setSavingUsers(prev => new Set(prev).add(userId));
 
     try {
+      const current = users?.find(u => u.id === userId);
+      const newRole = update.role ?? current?.role ?? 'account_manager';
+      const newDivisionId = (update.division_id !== undefined) ? update.division_id : (current?.division_id ?? null);
+      const newDepartmentId = (update.department_id !== undefined) ? update.department_id : (current?.department_id ?? null);
+
       const result = await updateUserProfile(
         userId,
-        update.role,
-        null, // No division assignment
-        null  // No department assignment
+        newRole,
+        newDivisionId,
+        newDepartmentId
       );
 
       if (result.success) {
@@ -291,6 +369,8 @@ export default function Admin() {
                     <TableHead className="min-w-[140px]">Current Role</TableHead>
                     <TableHead className="min-w-[100px]">Title</TableHead>
                     <TableHead className="min-w-[80px]">Region</TableHead>
+                    <TableHead className="min-w-[120px]">Division</TableHead>
+                    <TableHead className="min-w-[140px]">Department</TableHead>
                     <TableHead className="text-right min-w-[160px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -299,7 +379,9 @@ export default function Admin() {
                    const currentRole = getCurrentRole(user);
                    const isUserDirty = isDirty(user.id);
                    const isSaving = savingUsers.has(user.id);
-                    const canManage = canManageUser(user.role);
+                   const canManage = canManageUser(user.role);
+                   const currentDivisionId = (userUpdates[user.id]?.division_id !== undefined) ? (userUpdates[user.id]?.division_id ?? '') : (user.division_id ?? '');
+                   const currentDepartmentId = (userUpdates[user.id]?.department_id !== undefined) ? (userUpdates[user.id]?.department_id ?? '') : (user.department_id ?? '');
 
                     return (
                      <TableRow key={user.id} className={isUserDirty ? "bg-muted/30" : ""}>
@@ -368,6 +450,53 @@ export default function Admin() {
                           </span>
                         )}
                        </TableCell>
+                      <TableCell>
+                        {canManage ? (
+                          <Select
+                            value={currentDivisionId || ''}
+                            onValueChange={(value) => handleDivisionChange(user.id, value)}
+                            disabled={isSaving}
+                          >
+                            <SelectTrigger className="w-[140px]">
+                              <SelectValue placeholder="Division" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              {divisions.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {canManage ? (
+                          <Select
+                            value={currentDepartmentId || ''}
+                            onValueChange={(value) => handleDepartmentChange(user.id, value)}
+                            disabled={isSaving}
+                          >
+                            <SelectTrigger className="w-[160px]">
+                              <SelectValue placeholder="Department" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              {departments
+                                .filter(dep => {
+                                  const selectedDiv = currentDivisionId || user.division_id || null;
+                                  return selectedDiv ? dep.division_id === selectedDiv : true;
+                                })
+                                .map((dep) => (
+                                  <SelectItem key={dep.id} value={dep.id}>{dep.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                          <div className="flex items-center gap-2 justify-end">
                           {canManage ? (
