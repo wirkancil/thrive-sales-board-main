@@ -1,18 +1,40 @@
 import { useState, useEffect, useMemo } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { useSalesTargets } from "@/hooks/useSalesTargets";
@@ -42,27 +64,36 @@ const measures = [
   { value: "margin", label: "Margin" },
 ];
 
-export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetModalProps) {
+export function AddTargetModal({
+  open,
+  onOpenChange,
+  onTargetAdded,
+}: AddTargetModalProps) {
   const { profile } = useProfile();
-  const { createTarget, accountManagers, loading: usersLoading } = useSalesTargets();
+  const {
+    createTarget,
+    accountManagers,
+    loading: usersLoading,
+  } = useSalesTargets();
   const { toast } = useToast();
-  
+
   const form = useForm<TargetFormData>({
     resolver: zodResolver(targetSchema),
     defaultValues: {
       accountManagerId: undefined,
       measure: undefined,
-    }
+    },
   });
 
   // Use team members from useSalesTargets hook with role labels
   const amOptions = useMemo(() => {
-    console.log("Debug - Team members from hook:", accountManagers);
-    
-    return accountManagers.map(am => {
-      const roleLabel = am.role === 'manager' ? 'Manager' : 
-                       am.role === 'head' ? 'Head' : 
-                       'Account Manager';
+    return accountManagers.map((am) => {
+      const roleLabel =
+        am.role === "manager"
+          ? "Manager"
+          : am.role === "head"
+          ? "Head"
+          : "Account Manager";
       return {
         value: String(am.id),
         label: `${am.full_name ?? "(Unnamed)"} (${roleLabel})`,
@@ -75,14 +106,14 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
   // Format number with commas as user types
   const formatNumberInput = (value: string) => {
     // Remove all non-digits
-    const numericValue = value.replace(/\D/g, '');
+    const numericValue = value.replace(/\D/g, "");
     // Add commas for thousands separator
-    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   };
 
   // Parse formatted number back to numeric value
   const parseFormattedNumber = (value: string) => {
-    return parseFloat(value.replace(/,/g, '')) || 0;
+    return parseFloat(value.replace(/,/g, "")) || 0;
   };
 
   const watchedFields = form.watch();
@@ -97,14 +128,14 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
       const endMonth = periodEnd.getMonth() + 1;
       const startYear = periodStart.getFullYear();
       const endYear = periodEnd.getFullYear();
-      
+
       // Determine quarter based on the start date
       let quarter = 1;
       if (startMonth >= 1 && startMonth <= 3) quarter = 1;
       else if (startMonth >= 4 && startMonth <= 6) quarter = 2;
       else if (startMonth >= 7 && startMonth <= 9) quarter = 3;
       else if (startMonth >= 10 && startMonth <= 12) quarter = 4;
-      
+
       // Use the start year as the fiscal year
       return `Q${quarter} ${startYear}`;
     }
@@ -113,18 +144,21 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
 
   // Format currency to IDR
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(value);
   };
 
   // Calculate quarterly amount (divide target by number of quarters in period)
   const getQuarterlyAmount = () => {
     if (periodStart && periodEnd && targetAmount > 0) {
-      const monthsDiff = (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 + (periodEnd.getMonth() - periodStart.getMonth()) + 1;
+      const monthsDiff =
+        (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 +
+        (periodEnd.getMonth() - periodStart.getMonth()) +
+        1;
       const quarters = Math.ceil(monthsDiff / 3);
       return formatCurrency(targetAmount / quarters);
     }
@@ -134,7 +168,10 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
   // Calculate monthly amount (divide target by number of months in period)
   const getMonthlyAmount = () => {
     if (periodStart && periodEnd && targetAmount > 0) {
-      const monthsDiff = (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 + (periodEnd.getMonth() - periodStart.getMonth()) + 1;
+      const monthsDiff =
+        (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 +
+        (periodEnd.getMonth() - periodStart.getMonth()) +
+        1;
       return formatCurrency(targetAmount / monthsDiff);
     }
     return formatCurrency(0);
@@ -142,16 +179,16 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
 
   const onSubmit = async (data: TargetFormData) => {
     console.log("Target data:", data);
-    
+
     try {
       const result = await createTarget({
         assigned_to: data.accountManagerId,
         measure: data.measure,
         amount: parseFormattedNumber(data.targetAmount),
-        period_start: format(data.periodStart, 'yyyy-MM-dd'),
-        period_end: format(data.periodEnd, 'yyyy-MM-dd'),
+        period_start: format(data.periodStart, "yyyy-MM-dd"),
+        period_end: format(data.periodEnd, "yyyy-MM-dd"),
         account_manager_id: data.accountManagerId,
-        target_amount: parseFormattedNumber(data.targetAmount)
+        target_amount: parseFormattedNumber(data.targetAmount),
       });
 
       if (result.error) {
@@ -161,11 +198,11 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
       // Reset form and close modal
       form.reset();
       onOpenChange(false);
-      
+
       // Refresh the targets list
       onTargetAdded?.();
     } catch (error: any) {
-      console.error('Error creating target:', error);
+      console.error("Error creating target:", error);
       toast({
         title: "Error",
         description: "Failed to create sales target. Please try again.",
@@ -180,7 +217,7 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
         <DialogHeader>
           <DialogTitle>Add Target</DialogTitle>
         </DialogHeader>
-        
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -191,7 +228,10 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Assign To</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ?? undefined}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select team member" />
@@ -204,13 +244,20 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
                           </SelectItem>
                         ) : hasAMs ? (
                           amOptions.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value} className="bg-background hover:bg-muted">
+                            <SelectItem
+                              key={opt.value}
+                              value={opt.value}
+                              className="bg-background hover:bg-muted"
+                            >
                               {opt.label}
                             </SelectItem>
                           ))
                         ) : (
                           <SelectItem value="no-managers" disabled>
-                            No team members found in your {profile?.role === 'manager' ? 'department' : 'division'}
+                            No team members found in your{" "}
+                            {profile?.role === "manager"
+                              ? "department"
+                              : "division"}
                           </SelectItem>
                         )}
                       </SelectContent>
@@ -227,7 +274,10 @@ export function AddTargetModal({ open, onOpenChange, onTargetAdded }: AddTargetM
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Measure</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ?? undefined}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select measure" />
