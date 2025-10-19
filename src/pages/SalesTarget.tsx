@@ -1,13 +1,43 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { AddTargetModal } from '@/components/modals/AddTargetModal';
-import { useSalesTargets } from '@/hooks/useSalesTargets';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useProfile } from '@/hooks/useProfile';
+import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from "recharts";
+import { AddTargetModal } from "@/components/modals/AddTargetModal";
+import { useSalesTargets } from "@/hooks/useSalesTargets";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useProfile } from "@/hooks/useProfile";
 
 function SalesTarget() {
   const { profile } = useProfile();
@@ -15,35 +45,38 @@ function SalesTarget() {
   const [isAddTargetOpen, setIsAddTargetOpen] = useState(false);
   const { targets, accountManagers, loading, fetchTargets } = useSalesTargets();
 
+  const [amTableDataMargin, setAmTableDataMargin] = useState([]);
+  const [amTableDataRevenue, setAmTableDataRevenue] = useState([]);
+
   // Calculate dynamic period options - only show periods that have targets
   const availablePeriods = React.useMemo(() => {
     const periods = new Set<string>();
-    
+
     // Only add periods from existing targets
-    targets.forEach(target => {
+    targets.forEach((target) => {
       if (target.period_start) {
         const startDate = new Date(target.period_start);
         const month = startDate.getMonth() + 1;
         const year = startDate.getFullYear();
-        
+
         let quarter = 1;
         if (month >= 1 && month <= 3) quarter = 1;
         else if (month >= 4 && month <= 6) quarter = 2;
         else if (month >= 7 && month <= 9) quarter = 3;
         else if (month >= 10 && month <= 12) quarter = 4;
-        
+
         periods.add(`Q${quarter} ${year}`);
       }
     });
-    
+
     return Array.from(periods).sort((a, b) => {
-      const [aQ, aY] = a.split(' ');
-      const [bQ, bY] = b.split(' ');
+      const [aQ, aY] = a.split(" ");
+      const [bQ, bY] = b.split(" ");
       const aYear = parseInt(aY);
       const bYear = parseInt(bY);
       const aQuarter = parseInt(aQ.substring(1));
       const bQuarter = parseInt(bQ.substring(1));
-      
+
       if (aYear !== bYear) return aYear - bYear;
       return aQuarter - bQuarter;
     });
@@ -68,40 +101,77 @@ function SalesTarget() {
       fetchTargets(selectedPeriod);
     }
   }, [selectedPeriod]);
-  
-  // Calculate department metrics from real data
+
+  // Calculate department metrics from real data (Margin Target)
   const departmentMetrics = React.useMemo(() => {
     if (!targets || targets.length === 0) {
       return {
         target: 0,
         achieved: 0,
-        gap: 0
+        gap: 0,
       };
     }
-    
-    const totalTarget = targets.reduce((sum, target) => sum + Number(target.amount), 0);
+
+    const targetMargin = targets.filter(
+      (target) => target.measure === "margin"
+    );
+
+    const totalTarget = targetMargin.reduce(
+      (sum, target) => sum + Number(target.amount),
+      0
+    );
     // For now, using mock achieved data - this could come from deals/pipeline data
     const achieved = totalTarget * 0.704; // 70.4% achievement rate
     const gap = totalTarget - achieved;
-    
+
     return {
       target: totalTarget,
       achieved: achieved,
-      gap: gap
+      gap: gap,
     };
   }, [targets]);
-  
+
+  // Calculate department metrics from real data (Margin Target)
+  const departmentMetricsRevenue = React.useMemo(() => {
+    if (!targets || targets.length === 0) {
+      return {
+        target: 0,
+        achieved: 0,
+        gap: 0,
+      };
+    }
+
+    const targetRevenue = targets.filter(
+      (target) => target.measure === "revenue"
+    );
+
+    const totalTarget = targetRevenue.reduce(
+      (sum, target) => sum + Number(target.amount),
+      0
+    );
+    // For now, using mock achieved data - this could come from deals/pipeline data
+    const achieved = totalTarget * 0.704; // 70.4% achievement rate
+    const gap = totalTarget - achieved;
+
+    return {
+      target: totalTarget,
+      achieved: achieved,
+      gap: gap,
+    };
+  }, [targets]);
+
   // Transform targets data for team performance chart (hierarchical)
   const amPerformanceData = React.useMemo(() => {
     if (!targets || targets.length === 0) return [];
-    
+
     const targetsByAM = targets.reduce((acc, target) => {
       const member = target.account_manager || target.assigned_user;
-      const name = member?.full_name || 'Unknown';
-      const role = member?.role || 'account_manager';
-      const roleLabel = role === 'manager' ? 'MGR' : role === 'head' ? 'HEAD' : 'AM';
+      const name = member?.full_name || "Unknown";
+      const role = member?.role || "account_manager";
+      const roleLabel =
+        role === "manager" ? "MGR" : role === "head" ? "HEAD" : "AM";
       const displayName = `${name} (${roleLabel})`;
-      
+
       if (!acc[displayName]) {
         acc[displayName] = { value: 0, role };
       }
@@ -115,118 +185,282 @@ function SalesTarget() {
       .map(([name, data]) => ({
         name,
         value: data.value * 0.704, // Mock 70.4% achievement rate
-        role: data.role
+        role: data.role,
       }))
       .sort((a, b) => {
-        const roleCompare = (roleOrder[a.role as keyof typeof roleOrder] || 3) - 
-                           (roleOrder[b.role as keyof typeof roleOrder] || 3);
+        const roleCompare =
+          (roleOrder[a.role as keyof typeof roleOrder] || 3) -
+          (roleOrder[b.role as keyof typeof roleOrder] || 3);
         return roleCompare !== 0 ? roleCompare : b.value - a.value;
       });
   }, [targets]);
 
   // Calculate attainment percentage from real data
   const attainmentData = React.useMemo(() => {
-    const achievementRate = departmentMetrics.target > 0 ? (departmentMetrics.achieved / departmentMetrics.target) * 100 : 0;
+    const achievementRate =
+      departmentMetrics.target > 0
+        ? (departmentMetrics.achieved / departmentMetrics.target) * 100
+        : 0;
     return [
-      { name: 'Achieved', value: Math.round(achievementRate), fill: 'hsl(var(--primary))' },
-      { name: 'Remaining', value: Math.round(100 - achievementRate), fill: 'hsl(var(--muted))' }
+      {
+        name: "Achieved",
+        value: Math.round(achievementRate),
+        fill: "hsl(var(--primary))",
+      },
+      {
+        name: "Remaining",
+        value: Math.round(100 - achievementRate),
+        fill: "hsl(var(--muted))",
+      },
     ];
   }, [departmentMetrics]);
 
-  
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(value);
   };
-  
-  // Transform targets data for team table - Group by team member and aggregate (hierarchical)
-  const amTableData = React.useMemo(() => {
-    // Start with all team members
-    const allMembers = accountManagers.map(am => ({
+
+  const amTableDataMegrinCal = React.useMemo(() => {
+    const roleOrder = { head: 0, manager: 1, account_manager: 2 };
+
+    // Default all team members (even if no targets)
+    const allMembers = accountManagers.map((am) => ({
       am: am.full_name,
       amId: am.id,
-      role: am.role || 'account_manager',
+      role: am.role || "account_manager",
       monthlyTarget: 0,
       quarterlyTarget: 0,
       achieved: 0,
       gap: 0,
-      status: 'On Track'
+      status: "No Target",
+      measure: "revenue",
     }));
-    
-    if (!targets || targets.length === 0) {
-      // Sort by role hierarchy even with no targets
-      const roleOrder = { head: 0, manager: 1, account_manager: 2 };
-      return allMembers.sort((a, b) => 
-        (roleOrder[a.role as keyof typeof roleOrder] || 3) - 
-        (roleOrder[b.role as keyof typeof roleOrder] || 3)
+
+    // Jika tidak ada target, langsung return sorted members
+    const allTargetMargin = targets.filter(
+      (target) => target.measure === "margin"
+    );
+    if (!allTargetMargin || allTargetMargin.length === 0) {
+      return allMembers.sort(
+        (a, b) =>
+          (roleOrder[a.role as keyof typeof roleOrder] || 3) -
+          (roleOrder[b.role as keyof typeof roleOrder] || 3)
       );
     }
-    
-    const targetsByMember = targets.reduce((acc, target) => {
+
+    // Grouping targets berdasarkan member
+    const targetsByMember = allTargetMargin.reduce((acc, target) => {
       const memberId = target.assigned_to;
-      
+      if (!memberId) return acc;
+
+      // Cari member di daftar utama
+      const member = accountManagers.find((am) => am.id === memberId);
+      const targetMember = target.account_manager || target.assigned_user;
+
+      // Inisialisasi data member jika belum ada
       if (!acc[memberId]) {
-        const member = accountManagers.find(am => am.id === memberId);
-        const targetMember = target.account_manager || target.assigned_user;
         acc[memberId] = {
-          am: member?.full_name || targetMember?.full_name || 'Unknown',
+          am: member?.full_name || targetMember?.full_name || "Unknown",
           amId: memberId,
-          role: member?.role || targetMember?.role || 'account_manager',
+          role: member?.role || targetMember?.role || "account_manager",
           monthlyTarget: 0,
           quarterlyTarget: 0,
           achieved: 0,
           gap: 0,
-          status: 'On Track'
+          status: "No Target",
+          measure: target.measure || "revenue",
         };
       }
-      
-      // Calculate period length in months
+
+      // Validasi periode
       const periodStart = new Date(target.period_start);
       const periodEnd = new Date(target.period_end);
-      const monthsDiff = (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 + (periodEnd.getMonth() - periodStart.getMonth()) + 1;
-      
-      // Calculate monthly and quarterly amounts based on actual period
-      const monthlyAmount = Number(target.amount) / monthsDiff;
-      const quarterlyAmount = Number(target.amount) / Math.ceil(monthsDiff / 3);
-      const achieved = Number(target.amount) * 0.704; // Mock 70.4% achievement rate
-      
-      const currentEntry = acc[memberId];
-      currentEntry.monthlyTarget += monthlyAmount;
-      currentEntry.quarterlyTarget += quarterlyAmount;
-      currentEntry.achieved += achieved;
-      
+      if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
+        console.warn("Invalid target period:", target);
+        return acc;
+      }
+
+      // Hitung selisih bulan
+      const monthsDiff =
+        (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 +
+        (periodEnd.getMonth() - periodStart.getMonth()) +
+        1;
+      const safeMonths = Math.max(monthsDiff, 1);
+
+      // Hitung nilai per bulan & kuartal
+      const amount = Number(target.amount) || 0;
+      const monthlyAmount = amount / safeMonths;
+      const quarterlyAmount = amount / Math.max(Math.ceil(safeMonths / 3), 1);
+
+      // Hitung pencapaian
+      const achieved = Number.isFinite(Number(target.achieved))
+        ? Number(target.achieved)
+        : amount * 0.704; // Mock jika tidak ada data
+
+      const current = acc[memberId];
+      current.monthlyTarget += monthlyAmount;
+      current.quarterlyTarget += quarterlyAmount;
+      current.achieved += achieved;
+
       return acc;
     }, {} as Record<string, any>);
 
-    // Merge all members with their targets data
-    const result = allMembers.map(member => {
+    // Gabungkan semua member dengan data target-nya
+    const result = allMembers.map((member) => {
       const targetData = targetsByMember[member.amId];
       if (targetData) {
-        return {
-          ...targetData,
-          gap: targetData.quarterlyTarget - targetData.achieved,
-          status: (targetData.quarterlyTarget - targetData.achieved) <= 0 ? 'On Track' : 'Behind'
-        };
+        const gap = targetData.quarterlyTarget - targetData.achieved;
+        let status = "Behind";
+        if (gap <= 0) status = "On Track";
+        if (targetData.achieved > targetData.quarterlyTarget * 1.05)
+          status = "Ahead"; // >105% dianggap lebih
+        return { ...targetData, gap, status };
       }
-      return member; // Member with no targets (all zeros)
+      return member;
     });
 
-    // Sort by role hierarchy
-    const roleOrder = { head: 0, manager: 1, account_manager: 2 };
+    // Sort by hierarchy, lalu berdasarkan target
     return result.sort((a, b) => {
-      const roleCompare = (roleOrder[a.role as keyof typeof roleOrder] || 3) - 
-                         (roleOrder[b.role as keyof typeof roleOrder] || 3);
-      return roleCompare !== 0 ? roleCompare : b.quarterlyTarget - a.quarterlyTarget;
+      const roleCompare =
+        (roleOrder[a.role as keyof typeof roleOrder] || 3) -
+        (roleOrder[b.role as keyof typeof roleOrder] || 3);
+      if (roleCompare !== 0) return roleCompare;
+      if (b.quarterlyTarget !== a.quarterlyTarget)
+        return b.quarterlyTarget - a.quarterlyTarget;
+      return a.am.localeCompare(b.am);
     });
   }, [targets, accountManagers]);
 
+  const amTableDataRevenueCalc = React.useMemo(() => {
+    const roleOrder = { head: 0, manager: 1, account_manager: 2 };
 
+    // Default all team members (even if no targets)
+    const allMembers = accountManagers.map((am) => ({
+      am: am.full_name,
+      amId: am.id,
+      role: am.role || "account_manager",
+      monthlyTarget: 0,
+      quarterlyTarget: 0,
+      achieved: 0,
+      gap: 0,
+      status: "No Target",
+      measure: "revenue",
+    }));
 
-  const pageTitle = profile?.role === 'head' ? 'Manager Target' : 'Sales Target';
+    // Jika tidak ada target, langsung return sorted members
+    const allTargetRevenue = targets.filter(
+      (target) => target.measure === "revenue"
+    );
+    if (!allTargetRevenue || allTargetRevenue.length === 0) {
+      return allMembers.sort(
+        (a, b) =>
+          (roleOrder[a.role as keyof typeof roleOrder] || 3) -
+          (roleOrder[b.role as keyof typeof roleOrder] || 3)
+      );
+    }
+
+    // Grouping targets berdasarkan member
+    const targetsByMember = allTargetRevenue.reduce((acc, target) => {
+      const memberId = target.assigned_to;
+      if (!memberId) return acc;
+
+      // Cari member di daftar utama
+      const member = accountManagers.find((am) => am.id === memberId);
+      const targetMember = target.account_manager || target.assigned_user;
+
+      // Inisialisasi data member jika belum ada
+      if (!acc[memberId]) {
+        acc[memberId] = {
+          am: member?.full_name || targetMember?.full_name || "Unknown",
+          amId: memberId,
+          role: member?.role || targetMember?.role || "account_manager",
+          monthlyTarget: 0,
+          quarterlyTarget: 0,
+          achieved: 0,
+          gap: 0,
+          status: "No Target",
+          measure: target.measure || "revenue",
+        };
+      }
+
+      // Validasi periode
+      const periodStart = new Date(target.period_start);
+      const periodEnd = new Date(target.period_end);
+      if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
+        console.warn("Invalid target period:", target);
+        return acc;
+      }
+
+      // Hitung selisih bulan
+      const monthsDiff =
+        (periodEnd.getFullYear() - periodStart.getFullYear()) * 12 +
+        (periodEnd.getMonth() - periodStart.getMonth()) +
+        1;
+      const safeMonths = Math.max(monthsDiff, 1);
+
+      // Hitung nilai per bulan & kuartal
+      const amount = Number(target.amount) || 0;
+      const monthlyAmount = amount / safeMonths;
+      const quarterlyAmount = amount / Math.max(Math.ceil(safeMonths / 3), 1);
+
+      // Hitung pencapaian
+      const achieved = Number.isFinite(Number(target.achieved))
+        ? Number(target.achieved)
+        : amount * 0.704; // Mock jika tidak ada data
+
+      const current = acc[memberId];
+      current.monthlyTarget += monthlyAmount;
+      current.quarterlyTarget += quarterlyAmount;
+      current.achieved += achieved;
+
+      return acc;
+    }, {} as Record<string, any>);
+
+    // Gabungkan semua member dengan data target-nya
+    const result = allMembers.map((member) => {
+      const targetData = targetsByMember[member.amId];
+      if (targetData) {
+        const gap = targetData.quarterlyTarget - targetData.achieved;
+        let status = "Behind";
+        if (gap <= 0) status = "On Track";
+        if (targetData.achieved > targetData.quarterlyTarget * 1.05)
+          status = "Ahead"; // >105% dianggap lebih
+        return { ...targetData, gap, status };
+      }
+      return member;
+    });
+
+    // Sort by hierarchy, lalu berdasarkan target
+    return result.sort((a, b) => {
+      const roleCompare =
+        (roleOrder[a.role as keyof typeof roleOrder] || 3) -
+        (roleOrder[b.role as keyof typeof roleOrder] || 3);
+      if (roleCompare !== 0) return roleCompare;
+      if (b.quarterlyTarget !== a.quarterlyTarget)
+        return b.quarterlyTarget - a.quarterlyTarget;
+      return a.am.localeCompare(b.am);
+    });
+  }, [targets, accountManagers]);
+
+  React.useEffect(() => {
+    // Pisahkan berdasarkan measure
+    const amTableDataMargin = amTableDataMegrinCal.filter(
+      (item) => item.measure === "margin"
+    );
+    const amTableDataRevenue = amTableDataRevenueCalc.filter(
+      (item) => item.measure === "revenue"
+    );
+
+    setAmTableDataMargin(amTableDataMargin);
+    setAmTableDataRevenue(amTableDataRevenue);
+  }, [amTableDataRevenueCalc, amTableDataMegrinCal]);
+
+  const pageTitle =
+    profile?.role === "head" ? "Manager Target" : "Sales Target";
 
   return (
     <div className="space-y-6">
@@ -260,28 +494,80 @@ function SalesTarget() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Department Target</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Margin Target
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(departmentMetrics.target)}</div>
+            <div className="text-2xl font-bold">
+              {formatCurrency(departmentMetrics.target)}
+            </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Achieved</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Margin Achieved
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(departmentMetrics.achieved)}</div>
+            <div className="text-2xl font-bold">
+              {formatCurrency(departmentMetrics.achieved)}
+            </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Gap</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Margin Gap
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(departmentMetrics.gap)}</div>
+            <div className="text-2xl font-bold">
+              {formatCurrency(departmentMetrics.gap)}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* REVENUE */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Target Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {formatCurrency(departmentMetricsRevenue.target)}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Revenue Achieved
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {formatCurrency(departmentMetricsRevenue.achieved)}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Revenue Gap
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {formatCurrency(departmentMetricsRevenue.gap)}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -294,16 +580,23 @@ function SalesTarget() {
             <CardContent className="p-6">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={amPerformanceData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                    <XAxis 
-                      dataKey="name" 
+                  <BarChart
+                    data={amPerformanceData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                  >
+                    <XAxis
+                      dataKey="name"
                       angle={-45}
                       textAnchor="end"
                       height={100}
                       fontSize={11}
                     />
                     <YAxis fontSize={12} />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="value"
+                      fill="hsl(var(--primary))"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -337,7 +630,9 @@ function SalesTarget() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-3xl font-bold">{attainmentData[0]?.value || 0}%</span>
+                <span className="text-3xl font-bold">
+                  {attainmentData[0]?.value || 0}%
+                </span>
               </div>
             </div>
           </CardContent>
@@ -345,7 +640,11 @@ function SalesTarget() {
       </div>
 
       {/* Data Table */}
+      {/* Margin */}
       <Card>
+        <CardHeader>
+          <CardTitle>Margin</CardTitle>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -362,36 +661,53 @@ function SalesTarget() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center">Loading targets...</TableCell>
+                  <TableCell colSpan={7} className="text-center">
+                    Loading targets...
+                  </TableCell>
                 </TableRow>
-              ) : amTableData.length > 0 ? (
-                amTableData.map((row, index) => {
-                  const roleLabel = row.role === 'manager' ? 'Manager' : 
-                                   row.role === 'head' ? 'Head' : 
-                                   'Account Manager';
-                  const bgClass = row.role === 'head' ? 'bg-muted/50' : 
-                                 row.role === 'manager' ? 'bg-muted/30' : '';
-                  
+              ) : amTableDataMargin.length > 0 ? (
+                amTableDataMargin.map((row, index) => {
+                  const roleLabel =
+                    row.role === "manager"
+                      ? "Manager"
+                      : row.role === "head"
+                      ? "Head"
+                      : "Account Manager";
+                  const bgClass =
+                    row.role === "head"
+                      ? "bg-muted/50"
+                      : row.role === "manager"
+                      ? "bg-muted/30"
+                      : "";
+
                   return (
                     <TableRow key={row.amId || index} className={bgClass}>
                       <TableCell className="font-medium">{row.am}</TableCell>
                       <TableCell>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground whitespace-nowrap">
                           {roleLabel}
                         </span>
                       </TableCell>
                       <TableCell>{formatCurrency(row.monthlyTarget)}</TableCell>
-                      <TableCell>{formatCurrency(row.quarterlyTarget)}</TableCell>
+                      <TableCell>
+                        {formatCurrency(row.quarterlyTarget)}
+                      </TableCell>
                       <TableCell>{formatCurrency(row.achieved)}</TableCell>
-                      <TableCell className={row.gap > 0 ? "text-red-600" : "text-green-600"}>
+                      <TableCell
+                        className={
+                          row.gap > 0 ? "text-red-600" : "text-green-600"
+                        }
+                      >
                         {formatCurrency(Math.abs(row.gap))}
                       </TableCell>
                       <TableCell>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          row.status === 'On Track' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            row.status === "On Track"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
                           {row.status}
                         </span>
                       </TableCell>
@@ -400,18 +716,106 @@ function SalesTarget() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center">No team members found</TableCell>
+                  <TableCell colSpan={7} className="text-center">
+                    No team members found
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
-      
+
+      {/* Revenue */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Revenue</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team Member</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Monthly Target (IDR)</TableHead>
+                <TableHead>Quarterly Target (IDR)</TableHead>
+                <TableHead>Achieved</TableHead>
+                <TableHead>Gap</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center">
+                    Loading targets...
+                  </TableCell>
+                </TableRow>
+              ) : amTableDataRevenue.length > 0 ? (
+                amTableDataRevenue.map((row, index) => {
+                  const roleLabel =
+                    row.role === "manager"
+                      ? "Manager"
+                      : row.role === "head"
+                      ? "Head"
+                      : "Account Manager";
+                  const bgClass =
+                    row.role === "head"
+                      ? "bg-muted/50"
+                      : row.role === "manager"
+                      ? "bg-muted/30"
+                      : "";
+
+                  return (
+                    <TableRow key={row.amId || index} className={bgClass}>
+                      <TableCell className="font-medium">{row.am}</TableCell>
+                      <TableCell>
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground whitespace-nowrap">
+                          {roleLabel}
+                        </span>
+                      </TableCell>
+                      <TableCell>{formatCurrency(row.monthlyTarget)}</TableCell>
+                      <TableCell>
+                        {formatCurrency(row.quarterlyTarget)}
+                      </TableCell>
+                      <TableCell>{formatCurrency(row.achieved)}</TableCell>
+                      <TableCell
+                        className={
+                          row.gap > 0 ? "text-red-600" : "text-green-600"
+                        }
+                      >
+                        {formatCurrency(Math.abs(row.gap))}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            row.status === "On Track"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {row.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center">
+                    No team members found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
       {/* Add Target Modal */}
-      <AddTargetModal 
-        open={isAddTargetOpen} 
-        onOpenChange={setIsAddTargetOpen} 
+      <AddTargetModal
+        open={isAddTargetOpen}
+        onOpenChange={setIsAddTargetOpen}
         onTargetAdded={() => {
           // First fetch all targets to update available periods
           fetchTargets();
