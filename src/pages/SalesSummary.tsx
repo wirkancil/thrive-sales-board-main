@@ -59,8 +59,6 @@ const SalesSummary = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const achievement = useTargetAchievement(user);
-  console.log("achievement", achievement);
-
   const dateRange = "Sep 1 - Sep 30, 2025";
 
   // Fetch all data
@@ -82,8 +80,6 @@ const SalesSummary = () => {
         if (oppError) throw oppError;
 
         // Calculate total revenue (won opportunities only)
-        console.log("opportunities: ", opportunities);
-
         const wonAmountForRevenue =
           opportunities
             ?.filter((opp) => opp.status === "won" || opp.is_won === true)
@@ -126,11 +122,8 @@ const SalesSummary = () => {
           .order("created_at", { ascending: false })
           .limit(1);
 
-        if (targetError) {
+        if (targetError)
           console.error("Error fetching sales target:", targetError);
-        } else {
-          console.log("Sales targets fetched:", salesTargets);
-        }
 
         // Calculate target achievement using won deals vs target
         const targetAmount = salesTargets?.[0]?.amount || 0;
