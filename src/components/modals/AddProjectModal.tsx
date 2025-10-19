@@ -25,6 +25,10 @@ import { CalendarIcon, Plus, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { Json } from "@/integrations/supabase/types";
+import { formatCurrency } from "@/lib/constants";
 
 interface InstallmentPayment {
   id: string;
@@ -60,7 +64,9 @@ export const AddProjectModal = ({
     poAmount: "",
     paymentType: "",
     paymentDate: undefined as Date | undefined,
+
     topDays: "",
+    topDueDate: undefined as Date | undefined,
 
     cost_of_goods: 0,
     service_costs: 0,
@@ -81,6 +87,8 @@ export const AddProjectModal = ({
     []
   );
   const [loading, setLoading] = useState(false);
+  const [margin, setMargin] = useState(0);
+  const { user } = useAuth();
 
   // Fetch won opportunities when modal opens
   useEffect(() => {
@@ -195,7 +203,7 @@ export const AddProjectModal = ({
     }
 
     if (formData.paymentType === "top") {
-      return formData.topDays && formData.paymentDate;
+      return formData.topDays && formData.topDueDate;
     }
 
     if (formData.paymentType === "cbd") {
@@ -207,52 +215,97 @@ export const AddProjectModal = ({
 
   const handleSubmit = async () => {
     if (isFormValid()) {
-      console.log("Project data:", { formData, installments });
-      const dataProject = {
-        name: formData.projectName,
-        opportunity_id: formData.opportunity_id,
-        po_number: Number(formData.poNumber),
-        po_date: formData.poDate,
-        po_amount: Number(formData.poAmount),
-        payment_type: formData.paymentType,
-        status: "",
-      };
+      try {
+        const paymentTypes = {
+          cbd: "CBD",
+          top: "TOP",
+          installment: "Installments",
+        };
+        const dataProject = {
+          name: formData.projectName,
+          opportunity_id: formData.opportunity_id,
+          po_number: formData.poNumber,
+          po_date:
+            formData.poDate instanceof Date
+              ? formData.poDate.toISOString()
+              : new Date(formData.poDate).toISOString(),
+          po_amount: Number(formData.poAmount) || 0,
+          payment_type: paymentTypes[formData.paymentType],
+          created_by: user.id,
+          currency: "IDR",
+          top_days: null,
+          top_due_date: null,
+          installments: null,
+        };
 
-      console.log("dataProject: ", dataProject);
+        if (formData.paymentType === "installment") {
+          dataProject.installments = installments;
+        }
 
-      // const { data, error } = await supabase
-      //   .from("projects")
-      //   .insert([dataProject])
-      //   .select();
+        if (formData.paymentType === "top") {
+          dataProject.top_days = parseInt(formData.topDays) || 0;
+          dataProject.top_due_date =
+            formData.topDueDate instanceof Date
+              ? formData.topDueDate.toISOString()
+              : new Date(formData.topDueDate).toISOString();
+        }
 
-      // // Here you would save the project data
-      // onOpenChange(false);
-      // // Reset form
-      // setFormData({
-      //   opportunity_id: "",
-      //   pipeline_id: "",
+        // Insert ke projects
+        const { error: errorCreateProject } = await supabase
+          .from("projects")
+          .insert([dataProject]);
 
-      //   projectName: "",
-      //   poNumber: "",
-      //   poDate: undefined,
-      //   poAmount: "",
-      //   paymentType: "",
-      //   paymentDate: undefined,
-      //   topDays: "",
+        if (errorCreateProject) throw errorCreateProject;
 
-      //   cost_of_goods: 0,
-      //   service_costs: 0,
-      //   other_expenses: 0,
-      // });
-      // setInstallments([
-      //   {
-      //     id: "1",
-      //     percentage: 0,
-      //     dueDate: undefined,
-      //     amount: 0,
-      //     status: "pending",
-      //   },
-      // ]);
+        // Update pipeline_items
+        const costOfGoods = Number(formData.cost_of_goods) || 0;
+        const serviceCosts = Number(formData.service_costs) || 0;
+        const otherExpenses = Number(formData.other_expenses) || 0;
+
+        const { error: errorUpdatePipelineItem } = await supabase
+          .from("pipeline_items")
+          .update({
+            cost_of_goods: costOfGoods,
+            service_costs: serviceCosts,
+            other_expenses: otherExpenses,
+          })
+          .eq("opportunity_id", formData.opportunity_id)
+          .eq("pipeline_id", formData.pipeline_id);
+
+        if (errorUpdatePipelineItem) throw errorUpdatePipelineItem;
+
+        toast.success("Project and pipeline item updated successfully");
+      } catch (error) {
+        console.error("Error creating project:", error);
+        toast.error("Failed to create project");
+      } finally {
+        onOpenChange(false);
+        // Reset form
+        setFormData({
+          opportunity_id: "",
+          pipeline_id: "",
+          projectName: "",
+          poNumber: "",
+          poDate: undefined,
+          poAmount: "",
+          paymentType: "",
+          paymentDate: undefined,
+          topDays: "",
+          topDueDate: undefined,
+          cost_of_goods: 0,
+          service_costs: 0,
+          other_expenses: 0,
+        });
+        setInstallments([
+          {
+            id: "1",
+            percentage: 0,
+            dueDate: undefined,
+            amount: 0,
+            status: "pending",
+          },
+        ]);
+      }
     }
   };
 
@@ -263,6 +316,20 @@ export const AddProjectModal = ({
   }, [
     formData.poAmount,
     installments.map((inst) => inst.percentage).join(","),
+  ]);
+
+  React.useEffect(() => {
+    const poAmount = Number(formData.poAmount) || 0;
+    const costOfGoods = Number(formData.cost_of_goods) || 0;
+    const serviceCosts = Number(formData.service_costs) || 0;
+    const otherExpenses = Number(formData.other_expenses) || 0;
+
+    setMargin(poAmount - (costOfGoods + serviceCosts + otherExpenses));
+  }, [
+    formData.poAmount,
+    formData.cost_of_goods,
+    formData.service_costs,
+    formData.other_expenses,
   ]);
 
   return (
@@ -458,21 +525,21 @@ export const AddProjectModal = ({
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !formData.paymentDate && "text-muted-foreground"
+                        !formData.topDueDate && "text-muted-foreground"
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.paymentDate
-                        ? format(formData.paymentDate, "PPP")
+                      {formData.topDueDate
+                        ? format(formData.topDueDate, "PPP")
                         : "Select due date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
                       mode="single"
-                      selected={formData.paymentDate}
+                      selected={formData.topDueDate}
                       onSelect={(date) =>
-                        setFormData({ ...formData, paymentDate: date })
+                        setFormData({ ...formData, topDueDate: date })
                       }
                       initialFocus
                       className="p-3 pointer-events-auto"
@@ -625,6 +692,7 @@ export const AddProjectModal = ({
                 })
               }
               placeholder="Enter cost of goods"
+              min={0}
             />
           </div>
 
@@ -642,6 +710,7 @@ export const AddProjectModal = ({
                 })
               }
               placeholder="Enter service costs"
+              min={0}
             />
           </div>
 
@@ -659,7 +728,13 @@ export const AddProjectModal = ({
                 })
               }
               placeholder="Enter other expenses"
+              min={0}
             />
+          </div>
+
+          <div className="space-y-2">
+            <p className="font-semibold my-3">Margin</p>
+            <p>{formatCurrency(margin, "IDR")}</p>
           </div>
 
           {/* Form Actions */}
