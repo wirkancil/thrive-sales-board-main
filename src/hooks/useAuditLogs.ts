@@ -39,22 +39,27 @@ export interface UserActivity {
   role: string | null;
 }
 
-export const useAuditLogs = (filters?: AuditLogFilters) => {
+export const useAuditLogs = (filters?: AuditLogFilters, pageSize: number = 5) => {
   const { profile } = useProfile();
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = async (page: number = currentPage) => {
     try {
       setLoading(true);
       setError(null);
+
+      // Calculate offset for pagination
+      const offset = (page - 1) * pageSize;
 
       let query = supabase
         .from('v_audit_log_complete')
         .select(`*`)
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .range(offset, offset + pageSize - 1);
 
       // Apply filters
       if (filters?.actionType) {
@@ -87,6 +92,12 @@ export const useAuditLogs = (filters?: AuditLogFilters) => {
       }));
 
       setAuditLogs(transformedData);
+      
+      // Calculate total pages (estimate based on current data)
+      // Note: Supabase doesn't provide total count with range queries easily
+      // For now, we'll assume there might be more data if we get a full page
+      const hasMoreData = transformedData.length === pageSize;
+      setTotalPages(currentPage + (hasMoreData ? 1 : 0));
     } catch (err: any) {
       console.error('Error fetching audit logs:', err);
       setError(err.message);
@@ -167,18 +178,35 @@ export const useAuditLogs = (filters?: AuditLogFilters) => {
   useEffect(() => {
     // Only fetch if user has permission to view audit logs
     if (profile?.role === 'admin' || profile?.role === 'head') {
-      fetchAuditLogs();
+      fetchAuditLogs(currentPage);
     }
-  }, [profile, filters]);
+  }, [profile, filters, currentPage]);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, page));
+  };
+
+  const goToNextPage = () => {
+    goToPage(currentPage + 1);
+  };
+
+  const goToPreviousPage = () => {
+    goToPage(currentPage - 1);
+  };
 
   return {
     auditLogs,
     loading,
     error,
+    currentPage,
+    totalPages,
     logAuditEvent,
     getActivitySummary,
     getTableActivity,
     getUserActivity,
     refetch: fetchAuditLogs,
+    goToPage,
+    goToNextPage,
+    goToPreviousPage,
   };
 };

@@ -29,7 +29,7 @@ export const AuditLogViewer = () => {
   const [filters, setFilters] = useState<AuditLogFilters>({});
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const { auditLogs, loading, getActivitySummary, getTableActivity, getUserActivity, refetch } = useAuditLogs(filters);
+  const { auditLogs, loading, getActivitySummary, getTableActivity, getUserActivity, refetch, currentPage, totalPages, goToNextPage, goToPreviousPage } = useAuditLogs(filters, 5);
 
   const handleApplyFilters = () => {
     const newFilters: AuditLogFilters = { ...filters };
@@ -291,6 +291,31 @@ export const AuditLogViewer = () => {
                   )}
                 </TableBody>
               </Table>
+            </div>
+            
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between mt-4 p-4 bg-muted/30 rounded-lg">
+              <div className="text-sm text-muted-foreground">
+                Showing {auditLogs.length} entries - Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={goToPreviousPage} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={currentPage <= 1}
+                >
+                  Previous
+                </Button>
+                <Button 
+                  onClick={goToNextPage} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </TabsContent>
 
