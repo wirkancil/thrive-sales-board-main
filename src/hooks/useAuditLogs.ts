@@ -16,9 +16,10 @@ export interface AuditLog {
   user_agent: string | null;
   created_at: string;
   session_id: string | null;
-  // Joined data
-  user_name?: string;
-  entity_name?: string;
+  user_role: string | null;
+  // Joined data from view
+  user_name: string;
+  entity_name: string | null;
 }
 
 export interface AuditLogFilters {
@@ -29,6 +30,13 @@ export interface AuditLogFilters {
     from: string;
     to: string;
   };
+}
+
+export interface UserActivity {
+  userId: string;
+  name: string;
+  count: number;
+  role: string | null;
 }
 
 export const useAuditLogs = (filters?: AuditLogFilters) => {
@@ -43,12 +51,8 @@ export const useAuditLogs = (filters?: AuditLogFilters) => {
       setError(null);
 
       let query = supabase
-        .from('audit_log_v2')
-        .select(`
-          *,
-          user_profiles!audit_log_v2_user_id_fkey(full_name),
-          entities!audit_log_v2_entity_id_fkey(name)
-        `)
+        .from('v_audit_log_complete')
+        .select(`*`)
         .order('created_at', { ascending: false })
         .limit(1000);
 
@@ -78,8 +82,8 @@ export const useAuditLogs = (filters?: AuditLogFilters) => {
       // Transform the data to include joined information
       const transformedData = (data || []).map((log: any) => ({
         ...log,
-        user_name: log.user_profiles?.full_name || 'Unknown User',
-        entity_name: log.entities?.name || 'No Entity'
+        user_name: log.user_name || 'Unknown User',
+        entity_name: log.entity_name || 'No Entity'
       }));
 
       setAuditLogs(transformedData);
@@ -142,21 +146,22 @@ export const useAuditLogs = (filters?: AuditLogFilters) => {
       .map(([table, count]) => ({ table, count }));
   };
 
-  const getUserActivity = () => {
-    const userActivity: Record<string, { name: string; count: number }> = {};
+  const getUserActivity = (): UserActivity[] => {
+    const userActivity: Record<string, { name: string; count: number; role: string | null }> = {};
     auditLogs.forEach(log => {
       const userId = log.user_id || 'system';
       const userName = log.user_name || 'System';
+      const userRole = log.user_role || null;
       
       if (!userActivity[userId]) {
-        userActivity[userId] = { name: userName, count: 0 };
+        userActivity[userId] = { name: userName, count: 0, role: userRole };
       }
       userActivity[userId].count++;
     });
     
     return Object.entries(userActivity)
       .sort(([,a], [,b]) => b.count - a.count)
-      .map(([userId, data]) => ({ userId, ...data }));
+      .map(([userId, data]) => ({ userId, name: data.name, count: data.count, role: data.role }));
   };
 
   useEffect(() => {
