@@ -23,7 +23,7 @@ import {
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useProfile } from "@/hooks/useProfile";
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 interface NavigationItem {
@@ -126,6 +126,7 @@ interface CRMSidebarProps {
 
 export function CRMSidebar({ onClose }: CRMSidebarProps = {}) {
   const { profile } = useProfile();
+  const { signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const navigationItems = getNavigationItems(profile?.role || 'account_manager');
@@ -273,14 +274,13 @@ export function CRMSidebar({ onClose }: CRMSidebarProps = {}) {
         <button
           onClick={async () => {
             try {
-              // Attempt to sign out - ignore errors since we want to logout regardless
-              await supabase.auth.signOut();
+              const { error } = await signOut();
+              if (error) {
+                console.log('Sign out error:', error);
+              }
             } catch (error) {
-              // Silently handle errors - session might be expired
               console.log('Logout completed (session may have been expired)');
             } finally {
-              // Always clear local state and redirect, even if signOut fails
-              localStorage.clear();
               if (onClose) onClose();
               navigate('/auth', { replace: true });
             }

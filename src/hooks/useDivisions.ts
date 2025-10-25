@@ -9,7 +9,7 @@ export interface Division {
   created_at: string;
 }
 
-export const useDivisions = () => {
+export function useDivisions() {
   const { user } = useAuth();
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +46,22 @@ export const useDivisions = () => {
     divisions,
     loading,
     error,
-    refetch: fetchDivisions
+    // new CRUD functions
+    createDivision: async (name: string) => {
+      const { error } = await supabase.from('divisions').insert({ name });
+      if (error) throw error;
+      await fetchDivisions();
+    },
+    updateDivision: async (id: string, payload: { name?: string }) => {
+      const { error } = await supabase.from('divisions').update(payload).eq('id', id);
+      if (error) throw error;
+      await fetchDivisions();
+    },
+    deleteDivision: async (id: string) => {
+      const { error } = await supabase.from('divisions').delete().eq('id', id);
+      if (error) throw error;
+      await fetchDivisions();
+    },
+    refetch: fetchDivisions,
   };
-};
+}

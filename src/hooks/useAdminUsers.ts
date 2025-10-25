@@ -58,12 +58,17 @@ export function useAdminUsers(query: string, roleFilter: string) {
       p_id: userId,
       p_role: role,
       p_division: divisionId ?? null,
-      p_department: departmentId ?? null,
-      p_team: null  // Explicitly pass null to use the 5-parameter version
+      p_department: departmentId ?? null
     });
     if (!error) refetch();
     return { success: !error, error };
   };
 
-  return { users, loading, refetch, updateUserProfile };
+  const deleteUser = async (userId: string) => {
+    const { error } = await (supabase as any).rpc('admin_delete_user', { p_id: userId });
+    if (!error) refetch();
+    return { success: !error, error };
+  };
+
+  return { users, loading, refetch, updateUserProfile, deleteUser };
 }

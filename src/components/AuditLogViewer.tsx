@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Eye, Filter, RefreshCw, User, Database, Activity, Calendar } from 'lucide-react';
+import { Shield, Eye, Filter, RefreshCw, User, Database, Activity, Calendar, Trash2 } from 'lucide-react';
 import { useAuditLogs, AuditLogFilters } from '@/hooks/useAuditLogs';
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { toast } from 'sonner';
 
 const ACTION_COLORS = {
   'CREATE': 'bg-green-500',
@@ -29,7 +30,7 @@ export const AuditLogViewer = () => {
   const [filters, setFilters] = useState<AuditLogFilters>({});
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const { auditLogs, loading, getActivitySummary, getTableActivity, getUserActivity, refetch } = useAuditLogs(filters);
+  const { auditLogs, loading, getActivitySummary, getTableActivity, getUserActivity, refetch, currentPage, totalPages, goToNextPage, goToPreviousPage, clearAuditLogs } = useAuditLogs(filters, 5);
 
   const handleApplyFilters = () => {
     const newFilters: AuditLogFilters = { ...filters };
@@ -47,6 +48,18 @@ export const AuditLogViewer = () => {
     setDateTo('');
   };
 
+  const handleClearLogs = async () => {
+    const ok = window.confirm('Hapus SEMUA audit logs? Tindakan ini permanen dan tidak bisa dibatalkan.');
+    if (!ok) return;
+    try {
+      await clearAuditLogs('all');
+      toast.success('Semua audit logs berhasil dihapus secara permanen.');
+    } catch (err: any) {
+      console.error('Failed to clear audit logs', err);
+      toast.error(err?.message || 'Gagal menghapus audit logs.');
+    }
+  };
+
   const activitySummary = getActivitySummary();
   const tableActivity = getTableActivity();
   const userActivity = getUserActivity();
@@ -61,7 +74,7 @@ export const AuditLogViewer = () => {
       if (keys.length <= 3) {
         return JSON.stringify(obj, null, 2);
       } else {
-        const preview = {};
+        const preview: Record<string, any> = {};
         keys.slice(0, 3).forEach(key => {
           preview[key] = obj[key];
         });
@@ -167,10 +180,14 @@ export const AuditLogViewer = () => {
                   Apply
                 </Button>
                 <Button onClick={handleClearFilters} variant="outline" size="sm">
-                  Clear
+                  Clear Filters
                 </Button>
                 <Button onClick={refetch} variant="outline" size="sm">
                   <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Button onClick={handleClearLogs} variant="destructive" size="sm">
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Clear Logs
                 </Button>
               </div>
             </div>
@@ -291,6 +308,31 @@ export const AuditLogViewer = () => {
                   )}
                 </TableBody>
               </Table>
+            </div>
+            
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between mt-4 p-4 bg-muted/30 rounded-lg">
+              <div className="text-sm text-muted-foreground">
+                Showing {auditLogs.length} entries - Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={goToPreviousPage} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={currentPage <= 1}
+                >
+                  Previous
+                </Button>
+                <Button 
+                  onClick={goToNextPage} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </TabsContent>
 

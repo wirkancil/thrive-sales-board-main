@@ -21,6 +21,7 @@ import { AuditLogViewer } from '@/components/AuditLogViewer';
 import { EntityScopedDashboard } from '@/components/EntityScopedDashboard';
 import { supabase } from '@/integrations/supabase/client';
 import { useDivisions } from '@/hooks/useDivisions';
+import { DivisionDepartmentManagement } from '@/components/DivisionDepartmentManagement';
 
 type RoleFilter = 'all' | 'account_manager' | 'head' | 'manager' | 'admin' | 'pending';
 
@@ -39,25 +40,33 @@ export default function Admin() {
   const { profile } = useProfile();
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
-  const { users, loading: usersLoading, refetch, updateUserProfile } = useAdminUsers(searchQuery, roleFilter);
+  const { users, loading: usersLoading, refetch, updateUserProfile, deleteUser } = useAdminUsers(searchQuery, roleFilter);
   const { titles } = useTitles();
   const { regions } = useRegions();
-  const { divisions } = useDivisions();
+  const { divisions, refetch: refetchDivisions } = useDivisions();
 
   const [departments, setDepartments] = useState<Array<{ id: string; name: string; division_id: string | null }>>([]);
 
+  const fetchDepartments = async () => {
+    const { data, error } = await supabase
+      .from('departments')
+      .select('id, name, division_id')
+      .order('name', { ascending: true });
+    setDepartments(error ? [] : (data || []));
+  };
+
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('id, name, division_id')
-        .order('name', { ascending: true });
-      if (!alive) return;
-      setDepartments(error ? [] : (data || []));
-    })();
-    return () => { alive = false; };
+    fetchDepartments();
   }, []);
+
+  React.useEffect(() => {
+    const handler = () => {
+      refetchDivisions();
+      fetchDepartments();
+    };
+    window.addEventListener('org-units-changed', handler);
+    return () => window.removeEventListener('org-units-changed', handler);
+  }, [refetchDivisions]);
 
   const [userUpdates, setUserUpdates] = useState<Record<string, UserUpdate>>({});
   const [savingUsers, setSavingUsers] = useState<Set<string>>(new Set());
@@ -268,6 +277,33 @@ export default function Admin() {
     });
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    const user = users?.find(u => u.id === userId);
+    const isAdminTarget = user?.role === 'admin';
+    const isSelf = userId === profile?.id;
+    if (isAdminTarget || isSelf) return;
+    const confirmed = window.confirm('Delete this user? This action cannot be undone.');
+    if (!confirmed) return;
+    setSavingUsers(prev => new Set([...prev, userId]));
+    const { error } = await deleteUser(userId);
+    setSavingUsers(prev => {
+      const next = new Set(prev);
+      next.delete(userId);
+      return next;
+    });
+    if (error) {
+      console.error('Failed to delete user', error);
+      alert('Failed to delete user: ' + (error.message || 'Unknown error'));
+    } else {
+      setUserUpdates(prev => {
+        const updated = { ...prev };
+        delete updated[userId];
+        return updated;
+      });
+      refetch();
+    }
+  };
+
   const getCurrentRole = (user: any) => {
     return userUpdates[user.id]?.role || user.role;
   };
@@ -312,6 +348,7 @@ export default function Admin() {
           <div className="grid gap-6 md:grid-cols-2">
             <TitleManagement />
             <RegionManagement />
+            <DivisionDepartmentManagement />
           </div>
           
           <EntityManagement />
@@ -504,7 +541,7 @@ export default function Admin() {
                               <Select
                                 value={currentRole}
                                 onValueChange={(value: UserProfile['role']) => handleRoleChange(user.id, value)}
-                                disabled={isSaving}
+                                disabled={isSaving || user.role === 'admin' || user.id === profile?.id}
                               >
                                 <SelectTrigger className="w-full max-w-[140px]">
                                   <SelectValue />
@@ -542,6 +579,15 @@ export default function Admin() {
                                   </Button>
                                 </div>
                               )}
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteUser(user.id)}
+                                disabled={isSaving || user.role === 'admin' || user.id === profile?.id}
+                                className="h-8"
+                              >
+                                Delete
+                              </Button>
                             </>
                           ) : (
                             <RoleBadge role={user.role} />
