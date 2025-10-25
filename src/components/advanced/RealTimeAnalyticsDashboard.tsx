@@ -56,40 +56,14 @@ const RealTimeAnalyticsDashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
-  // Mock real-time data
-  const [metrics, setMetrics] = useState<MetricCard[]>([
-    { title: 'Total Revenue', value: '$1.2M', change: '+12.5%', trend: 'up', color: 'text-green-600' },
-    { title: 'Active Opportunities', value: '156', change: '+8.3%', trend: 'up', color: 'text-blue-600' },
-    { title: 'Conversion Rate', value: '24.8%', change: '-2.1%', trend: 'down', color: 'text-red-600' },
-    { title: 'Pipeline Value', value: '$3.8M', change: '+15.7%', trend: 'up', color: 'text-purple-600' }
-  ]);
+  // Initialize with empty data - real data would come from API
+  const [metrics, setMetrics] = useState<MetricCard[]>([]);
 
-  const revenueData: ChartData[] = [
-    { name: 'Mon', value: 12000, revenue: 12000, leads: 45, conversion: 28 },
-    { name: 'Tue', value: 19000, revenue: 19000, leads: 52, conversion: 31 },
-    { name: 'Wed', value: 15000, revenue: 15000, leads: 38, conversion: 24 },
-    { name: 'Thu', value: 22000, revenue: 22000, leads: 61, conversion: 35 },
-    { name: 'Fri', value: 18000, revenue: 18000, leads: 49, conversion: 29 },
-    { name: 'Sat', value: 8000, revenue: 8000, leads: 22, conversion: 18 },
-    { name: 'Sun', value: 6000, revenue: 6000, leads: 18, conversion: 15 }
-  ];
+  const revenueData: ChartData[] = [];
 
-  const pipelineData: ChartData[] = [
-    { name: 'Prospecting', value: 45 },
-    { name: 'Qualification', value: 32 },
-    { name: 'Proposal', value: 28 },
-    { name: 'Negotiation', value: 15 },
-    { name: 'Closed Won', value: 12 },
-    { name: 'Closed Lost', value: 8 }
-  ];
+  const pipelineData: ChartData[] = [];
 
-  const performanceData: ChartData[] = [
-    { name: 'John Smith', value: 85 },
-    { name: 'Sarah Johnson', value: 72 },
-    { name: 'Mike Davis', value: 68 },
-    { name: 'Lisa Chen', value: 91 },
-    { name: 'Tom Wilson', value: 76 }
-  ];
+  const performanceData: ChartData[] = [];
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 

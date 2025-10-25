@@ -12,27 +12,30 @@ const Index = () => {
   useEffect(() => {
     if (loading) return;
 
-    // If user is authenticated but has no profile, redirect to pending approval
-    // Exception: admins and department heads don't need approval
+    // Jika user terautentikasi tapi belum ada profile, arahkan ke pending approval
     if (user && !profile) {
-      // Check if this is an admin or strategic leader email pattern
-      const isAdminOrLeader = user.email?.includes('admin') || 
-                                user.email?.includes('head') || 
-                                user.email?.includes('leader') ||
-                               user.email?.includes('head') ||
-                               user.email === 'admin@gmail.com';
-      
-      if (!isAdminOrLeader) {
+      navigate('/pending', { replace: true });
+      return;
+    }
+
+    // Jika tidak ada user, ditangani oleh ProtectedRoute
+    if (!user) return;
+
+    // Jika profile ada, cek apakah perlu approval berdasarkan assignment org
+    if (profile) {
+      const roleText = String(profile.role);
+      const needsApproval = (
+        roleText === 'pending' ||
+        (profile.role === 'head' && !profile.division_id) ||
+        ((profile.role === 'manager' || profile.role === 'account_manager') && !profile.department_id)
+      );
+
+      if (needsApproval) {
         navigate('/pending', { replace: true });
         return;
       }
-    }
 
-    // If no user, this should be handled by ProtectedRoute
-    if (!user) return;
-
-    // If profile exists, redirect based on role
-    if (profile) {
+      // Jika sudah lengkap, arahkan sesuai role
       switch (profile.role) {
         case 'admin':
           navigate('/admin-dashboard', { replace: true });
@@ -47,7 +50,6 @@ const Index = () => {
           navigate('/sales-dashboard', { replace: true });
           break;
         default:
-          // If role is not recognized, redirect to pending
           navigate('/pending', { replace: true });
       }
     }

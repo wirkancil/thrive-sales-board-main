@@ -56,104 +56,10 @@ const PipelineHealthScoring: React.FC = () => {
   const [selectedPipeline, setSelectedPipeline] = useState('all');
   const [timeframe, setTimeframe] = useState('30d');
 
-  // Mock data
-  const healthMetrics: HealthMetric[] = [
-    {
-      title: 'Overall Pipeline Health',
-      score: 78,
-      change: 5.2,
-      trend: 'up',
-      color: 'text-green-600',
-      icon: Target
-    },
-    {
-      title: 'Velocity Score',
-      score: 82,
-      change: -2.1,
-      trend: 'down',
-      color: 'text-red-600',
-      icon: Zap
-    },
-    {
-      title: 'Quality Score',
-      score: 75,
-      change: 3.8,
-      trend: 'up',
-      color: 'text-green-600',
-      icon: CheckCircle
-    },
-    {
-      title: 'Engagement Score',
-      score: 68,
-      change: 1.2,
-      trend: 'up',
-      color: 'text-green-600',
-      icon: Activity
-    }
-  ];
+  // Empty data - would be loaded from API
+  const healthMetrics: HealthMetric[] = [];
 
-  const pipelineOpportunities: PipelineHealth[] = [
-    {
-      id: '1',
-      name: 'Enterprise Software Deal',
-      owner: 'John Smith',
-      stage: 'Proposal',
-      value: 150000,
-      probability: 75,
-      daysInStage: 12,
-      lastActivity: '2 days ago',
-      healthScore: {
-        overall: 85,
-        velocity: 90,
-        quality: 80,
-        conversion: 85,
-        engagement: 75
-      },
-      riskFactors: ['Long time in stage'],
-      recommendations: ['Schedule follow-up call', 'Send proposal reminder'],
-      trend: 'improving'
-    },
-    {
-      id: '2',
-      name: 'Cloud Migration Project',
-      owner: 'Sarah Johnson',
-      stage: 'Negotiation',
-      value: 200000,
-      probability: 60,
-      daysInStage: 25,
-      lastActivity: '5 days ago',
-      healthScore: {
-        overall: 65,
-        velocity: 50,
-        quality: 70,
-        conversion: 60,
-        engagement: 45
-      },
-      riskFactors: ['Low engagement', 'Extended timeline', 'No recent activity'],
-      recommendations: ['Immediate follow-up required', 'Reassess stakeholder needs', 'Schedule executive meeting'],
-      trend: 'declining'
-    },
-    {
-      id: '3',
-      name: 'Digital Transformation',
-      owner: 'Mike Davis',
-      stage: 'Discovery',
-      value: 300000,
-      probability: 40,
-      daysInStage: 8,
-      lastActivity: 'Today',
-      healthScore: {
-        overall: 92,
-        velocity: 95,
-        quality: 90,
-        conversion: 85,
-        engagement: 95
-      },
-      riskFactors: [],
-      recommendations: ['Continue current approach', 'Prepare detailed proposal'],
-      trend: 'improving'
-    }
-  ];
+  const pipelineOpportunities: PipelineHealth[] = [];
 
   const getHealthColor = (score: number) => {
     if (score >= 80) return 'text-green-600';

@@ -85,133 +85,18 @@ export const APIConnectivityHub = () => {
   });
 
   useEffect(() => {
-    fetchAPIData();
+    // Initialize empty data - in real app, fetch from API
+    setEndpoints([]);
+    setTests([]);
+    setMonitoring([]);
   }, []);
 
   const fetchAPIData = async () => {
     try {
-      // Mock API endpoints
-      const mockEndpoints: APIEndpoint[] = [
-        {
-          id: '1',
-          name: 'Customer API',
-          url: 'https://api.example.com/customers',
-          method: 'GET',
-          status: 'active',
-          responseTime: 245,
-          lastTested: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          successRate: 99.2,
-          headers: { 'Content-Type': 'application/json' },
-          authentication: { type: 'bearer', value: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...' }
-        },
-        {
-          id: '2',
-          name: 'Webhook Receiver',
-          url: 'https://webhook.site/unique-id',
-          method: 'POST',
-          status: 'active',
-          responseTime: 156,
-          lastTested: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-          successRate: 100,
-          headers: { 'Content-Type': 'application/json' }
-        },
-        {
-          id: '3',
-          name: 'Legacy CRM Sync',
-          url: 'https://legacy.crm.com/api/sync',
-          method: 'PUT',
-          status: 'inactive',
-          responseTime: 1240,
-          lastTested: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          successRate: 78.5,
-          headers: { 'Content-Type': 'application/json' },
-          authentication: { type: 'api_key', value: 'sk-test-1234567890abcdef' }
-        }
-      ];
-
-      const mockTests: APITest[] = [
-        {
-          id: '1',
-          endpointId: '1',
-          endpointName: 'Customer API',
-          status: 'success',
-          responseTime: 245,
-          statusCode: 200,
-          timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          request: {
-            method: 'GET',
-            url: 'https://api.example.com/customers',
-            headers: { 'Authorization': 'Bearer ***', 'Content-Type': 'application/json' }
-          },
-          response: {
-            statusCode: 200,
-            headers: { 'content-type': 'application/json' },
-            body: '{"customers": [...], "total": 1234}',
-            size: 15420
-          }
-        },
-        {
-          id: '2',
-          endpointId: '3',
-          endpointName: 'Legacy CRM Sync',
-          status: 'failed',
-          responseTime: 5000,
-          statusCode: 500,
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          request: {
-            method: 'PUT',
-            url: 'https://legacy.crm.com/api/sync',
-            headers: { 'X-API-Key': '***', 'Content-Type': 'application/json' },
-            body: '{"data": "sync_payload"}'
-          },
-          response: {
-            statusCode: 500,
-            headers: { 'content-type': 'application/json' },
-            body: '{"error": "Internal server error", "code": "SYNC_FAILED"}',
-            size: 158
-          }
-        }
-      ];
-
-      const mockMonitoring: APIMonitoring[] = [
-        {
-          endpointId: '1',
-          endpointName: 'Customer API',
-          totalRequests: 15420,
-          successfulRequests: 15297,
-          failedRequests: 123,
-          averageResponseTime: 245,
-          uptimePercentage: 99.2,
-          lastHourRequests: 125,
-          lastHourErrors: 0
-        },
-        {
-          endpointId: '2',
-          endpointName: 'Webhook Receiver',
-          totalRequests: 8765,
-          successfulRequests: 8765,
-          failedRequests: 0,
-          averageResponseTime: 156,
-          uptimePercentage: 100,
-          lastHourRequests: 47,
-          lastHourErrors: 0
-        },
-        {
-          endpointId: '3',
-          endpointName: 'Legacy CRM Sync',
-          totalRequests: 2341,
-          successfulRequests: 1838,
-          failedRequests: 503,
-          averageResponseTime: 1240,
-          uptimePercentage: 78.5,
-          lastHourRequests: 12,
-          lastHourErrors: 3
-        }
-      ];
-
-      setEndpoints(mockEndpoints);
-      setTests(mockTests);
-      setMonitoring(mockMonitoring);
+      // Initialize empty data - in real app, fetch from actual API
+      setEndpoints([]);
+      setTests([]);
+      setMonitoring([]);
     } catch (error) {
       console.error('Error fetching API data:', error);
       toast.error('Failed to load API data');

@@ -26,43 +26,8 @@ export function DepartmentReportsSummary({ selectedDivision, selectedRep, dateRa
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API based on filters
-    const mockKPIs: KPIData[] = [
-      {
-        title: "Total Deals",
-        value: "364",
-        change: 15.2,
-        changeType: "increase",
-        icon: <Target className="h-4 w-4" />,
-        color: "text-blue-600"
-      },
-      {
-        title: "Total Value",
-        value: "$2.4M",
-        change: 8.7,
-        changeType: "increase",
-        icon: <DollarSign className="h-4 w-4" />,
-        color: "text-green-600"
-      },
-      {
-        title: "Conversion Rate",
-        value: "28.4%",
-        change: -3.2,
-        changeType: "decrease",
-        icon: <TrendingUp className="h-4 w-4" />,
-        color: "text-purple-600"
-      },
-      {
-        title: "Active Reps",
-        value: "47",
-        change: 2.1,
-        changeType: "increase",
-        icon: <Users className="h-4 w-4" />,
-        color: "text-orange-600"
-      }
-    ];
-
-    setKpiData(mockKPIs);
+    // Initialize with empty data - real data would come from API based on filters
+    setKpiData([]);
   }, [selectedDivision, selectedRep, dateRange]);
 
   const handleGenerateReport = async () => {

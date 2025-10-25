@@ -27,19 +27,12 @@ export function TeamPipelineOverview({ selectedRep, dateRange }: DivisionPipelin
   const [totalValue, setTotalValue] = useState(0);
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API based on selectedRep and dateRange
-    const mockData: PipelineStage[] = [
-      { name: "Lead", count: 24, value: 120000, color: "bg-slate-500", percentage: 15 },
-      { name: "Contacted", count: 18, value: 200000, color: "bg-blue-500", percentage: 25 },
-      { name: "Proposal Sent", count: 12, value: 180000, color: "bg-yellow-500", percentage: 30 },
-      { name: "Negotiation", count: 8, value: 160000, color: "bg-orange-500", percentage: 40 },
-      { name: "Won", count: 15, value: 300000, color: "bg-green-500", percentage: 85 },
-      { name: "Lost", count: 6, value: 90000, color: "bg-red-500", percentage: 0 }
-    ];
-
-    setPipelineData(mockData);
-    setTotalValue(mockData.reduce((sum, stage) => sum + stage.value, 0));
+    // Initialize empty data - in real app, fetch from API
+    setPipelineData([]);
+    setTotalValue(0);
   }, [selectedRep, dateRange]);
+
+
 
 
   return (

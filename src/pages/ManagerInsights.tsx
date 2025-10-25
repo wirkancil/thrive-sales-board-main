@@ -14,78 +14,14 @@ export default function ManagerInsights() {
     loading
   } = useRoleBasedData();
 
-  // Mock funnel data
-  const funnelData = [{
-    name: "Prospecting",
-    value: 1000,
-    fill: "#8884d8"
-  }, {
-    name: "Qualification",
-    value: 800,
-    fill: "#83a6ed"
-  }, {
-    name: "Approach/Discovery",
-    value: 500,
-    fill: "#8dd1e1"
-  }, {
-    name: "Presentation/POC",
-    value: 300,
-    fill: "#82ca9d"
-  }, {
-    name: "Proposal/Negotiation",
-    value: 150,
-    fill: "#ffc658"
-  }, {
-    name: "Closed Won",
-    value: 75,
-    fill: "#ff7300"
-  }];
+  // Initialize empty data - in real app, fetch from API
+  const funnelData: any[] = [];
 
-  // Calculate velocity data (average days in each stage)
-  const velocityData = [{
-    stage: "Prospecting",
-    avgDays: 14,
-    previousPeriod: 18
-  }, {
-    stage: "Qualification",
-    avgDays: 21,
-    previousPeriod: 25
-  }, {
-    stage: "Approach/Discovery",
-    avgDays: 28,
-    previousPeriod: 32
-  }, {
-    stage: "Presentation/POC",
-    avgDays: 35,
-    previousPeriod: 40
-  }, {
-    stage: "Proposal/Negotiation",
-    avgDays: 42,
-    previousPeriod: 45
-  }];
+  // Initialize empty velocity data
+  const velocityData: any[] = [];
 
-  // Calculate win-rate by rep
-  const winRateData = [{
-    rep: "John Smith",
-    winRate: 85,
-    deals: 12
-  }, {
-    rep: "Sarah Johnson",
-    winRate: 78,
-    deals: 9
-  }, {
-    rep: "Mike Davis",
-    winRate: 72,
-    deals: 8
-  }, {
-    rep: "Lisa Chen",
-    winRate: 68,
-    deals: 6
-  }, {
-    rep: "Tom Wilson",
-    winRate: 65,
-    deals: 10
-  }];
+  // Initialize empty win-rate data
+  const winRateData: any[] = [];
 
   // Calculate activity hygiene score
   const calculateActivityHygiene = () => {
@@ -203,12 +139,12 @@ export default function ManagerInsights() {
             </ResponsiveContainer>
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="font-medium">Highest Win Rate</div>
-                <div className="text-muted-foreground">John Smith (85%)</div>
+                <div className="font-medium">No Data Available</div>
+                <div className="text-muted-foreground">Connect to API for data</div>
               </div>
               <div>
-                <div className="font-medium">Most Active</div>
-                <div className="text-muted-foreground">John Smith (12 deals)</div>
+                <div className="font-medium">No Data Available</div>
+                <div className="text-muted-foreground">Connect to API for data</div>
               </div>
             </div>
           </CardContent>
@@ -272,3 +208,4 @@ export default function ManagerInsights() {
       </div>
     </div>;
 }
+  // Initialize empty data - in real app, fetch from API

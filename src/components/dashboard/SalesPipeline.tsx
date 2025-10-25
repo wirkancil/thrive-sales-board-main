@@ -61,63 +61,8 @@ const pipelineStages: PipelineStage[] = [
   "Lost"
 ];
 
-const initialDeals: Deal[] = [
-  {
-    id: "1",
-    company_name: "TechCorp Solutions",
-    deal_value: 45000,
-    contact_person: "Sarah Johnson",
-    contact_avatar: "/placeholder.svg",
-    assigned_rep: "John Smith",
-    stage: "Lead",
-    status: "Hot",
-    created_at: "2024-01-15T10:00:00Z",
-  },
-  {
-    id: "2", 
-    company_name: "Global Industries",
-    deal_value: 120000,
-    contact_person: "Michael Chen",
-    contact_avatar: "/placeholder.svg",
-    assigned_rep: "Alice Brown",
-    stage: "Contacted",
-    status: "Warm",
-    created_at: "2024-01-14T14:30:00Z",
-  },
-  {
-    id: "3",
-    company_name: "StartupXYZ",
-    deal_value: 25000,
-    contact_person: "Emily Davis",
-    contact_avatar: "/placeholder.svg",
-    assigned_rep: "Bob Wilson",
-    stage: "Proposal Sent",
-    status: "Cold",
-    created_at: "2024-01-13T09:15:00Z",
-  },
-  {
-    id: "4",
-    company_name: "Enterprise Ltd",
-    deal_value: 200000,
-    contact_person: "David Thompson",
-    contact_avatar: "/placeholder.svg",
-    assigned_rep: "John Smith",
-    stage: "Negotiation",
-    status: "Hot",
-    created_at: "2024-01-12T16:45:00Z",
-  },
-  {
-    id: "5",
-    company_name: "Innovation Co",
-    deal_value: 75000,
-    contact_person: "Lisa Wang",
-    contact_avatar: "/placeholder.svg",
-    assigned_rep: "Alice Brown",
-    stage: "Won",
-    status: "Hot",
-    created_at: "2024-01-11T11:20:00Z",
-  },
-];
+// Empty initial deals array - data will be loaded from database
+const initialDeals: Deal[] = [];
 
 const STORAGE_KEY = "sales_pipeline_deals";
 
@@ -325,21 +270,8 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
           }));
           setDeals(mappedDeals);
         } else {
-          // Initialize with sample data for new users
-          const sampleDeals = initialDeals.map(deal => ({
-            ...deal,
-            user_id: user.id,
-            assigned_to: deal.assigned_rep,
-            contact_email: null
-          }));
-          
-          const { error: insertError } = await supabase
-            .from('deals')
-            .insert(sampleDeals);
-            
-          if (!insertError) {
-            setDeals(initialDeals.map(deal => ({ ...deal, user_id: user.id })));
-          }
+          // Initialize with empty data for new users
+          setDeals([]);
         }
       } catch (error) {
         console.error('Error loading deals:', error);

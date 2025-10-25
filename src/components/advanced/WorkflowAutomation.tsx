@@ -60,74 +60,24 @@ export const WorkflowAutomation = () => {
   });
 
   useEffect(() => {
+    const fetchWorkflowData = async () => {
+      setLoading(true);
+      try {
+        // Initialize empty data - in real app, fetch from API
+        setRules([]);
+        setExecutions([]);
+      } catch (error) {
+        console.error('Error fetching workflow data:', error);
+        toast.error('Failed to load workflow data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
     fetchWorkflowData();
   }, []);
 
-  const fetchWorkflowData = async () => {
-    setLoading(true);
-    try {
-      // Mock data - in real implementation, these would be stored in database
-      const mockRules: WorkflowRule[] = [
-        {
-          id: '1',
-          name: 'Stage Progression Reminder',
-          description: 'Send reminder if opportunity stays in same stage for 7 days',
-          trigger_type: 'time_based',
-          conditions: { days_in_stage: 7 },
-          actions: { send_email: true, assign_task: true },
-          is_active: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '2',
-          name: 'High Value Deal Alert',
-          description: 'Notify manager when deal value exceeds $50K',
-          trigger_type: 'value_change',
-          conditions: { amount_threshold: 50000 },
-          actions: { notify_manager: true, escalate: true },
-          is_active: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '3',
-          name: 'Close Date Approaching',
-          description: 'Alert when close date is within 3 days',
-          trigger_type: 'time_based',
-          conditions: { days_until_close: 3 },
-          actions: { send_notification: true, create_calendar_event: true },
-          is_active: true,
-          created_at: new Date().toISOString()
-        }
-      ];
 
-      const mockExecutions: WorkflowExecution[] = [
-        {
-          id: '1',
-          rule_id: '1',
-          opportunity_id: 'opp-1',
-          status: 'success',
-          executed_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          result: { email_sent: true, task_created: true }
-        },
-        {
-          id: '2',
-          rule_id: '2',
-          opportunity_id: 'opp-2',
-          status: 'success',
-          executed_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-          result: { manager_notified: true }
-        }
-      ];
-
-      setRules(mockRules);
-      setExecutions(mockExecutions);
-    } catch (error) {
-      console.error('Error fetching workflow data:', error);
-      toast.error('Failed to load workflow data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const toggleRule = async (ruleId: string, isActive: boolean) => {
     try {

@@ -30,47 +30,8 @@ export function TeamActivitiesSummary({ selectedRep, dateRange }: DivisionActivi
   const [activityFilter, setActivityFilter] = useState<string>("all");
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API based on selectedRep and dateRange
-    const mockActivities: ActivitySummary[] = [
-      {
-        id: "1",
-        type: "call",
-        customerName: "Acme Corporation",
-        salesRep: { name: "John Smith", initials: "JS" },
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        notes: "Discussed Q4 pricing and contract renewal",
-        status: "completed"
-      },
-      {
-        id: "2",
-        type: "meeting",
-        customerName: "TechStart Inc",
-        salesRep: { name: "Sarah Johnson", initials: "SJ" },
-        timestamp: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        notes: "Product demo and technical requirements review",
-        status: "scheduled"
-      },
-      {
-        id: "3",
-        type: "email",
-        customerName: "Global Solutions Ltd",
-        salesRep: { name: "Mike Davis", initials: "MD" },
-        timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
-        notes: "Sent proposal and implementation timeline",
-        status: "completed"
-      },
-      {
-        id: "4",
-        type: "call",
-        customerName: "Innovation Labs",
-        salesRep: { name: "Lisa Chen", initials: "LC" },
-        timestamp: new Date(Date.now() + 3 * 60 * 60 * 1000), // In 3 hours
-        notes: "Follow-up on pricing concerns",
-        status: "scheduled"
-      }
-    ];
-
-    setActivities(mockActivities);
+    // Initialize empty data - in real app, fetch from API
+    setActivities([]);
   }, [selectedRep, dateRange]);
 
   const getActivityIcon = (type: string) => {

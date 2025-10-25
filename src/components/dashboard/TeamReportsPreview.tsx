@@ -26,41 +26,8 @@ export function TeamReportsPreview({ selectedRep, dateRange }: DivisionReportsPr
   const [reports, setReports] = useState<ReportCard[]>([]);
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API based on selectedRep and dateRange
-    const mockReports: ReportCard[] = [
-      {
-        id: "week",
-        title: "This Week",
-        period: "Weekly Performance",
-        value: "$125,400",
-        change: 12.5,
-        changeType: "increase",
-        icon: <Calendar className="h-4 w-4" />,
-        color: "text-blue-600"
-      },
-      {
-        id: "month",
-        title: "This Month",
-        period: "Monthly Performance",
-        value: "$487,200",
-        change: 8.3,
-        changeType: "increase",
-        icon: <TrendingUp className="h-4 w-4" />,
-        color: "text-green-600"
-      },
-      {
-        id: "conversion",
-        title: "Conversion Rate",
-        period: "Lead to Close",
-        value: "24.7%",
-        change: -2.1,
-        changeType: "decrease",
-        icon: <Target className="h-4 w-4" />,
-        color: "text-purple-600"
-      }
-    ];
-
-    setReports(mockReports);
+    // Initialize empty data - in real app, fetch from API
+    setReports([]);
   }, [selectedRep, dateRange]);
 
   const getChangeIcon = (changeType: string, change: number) => {

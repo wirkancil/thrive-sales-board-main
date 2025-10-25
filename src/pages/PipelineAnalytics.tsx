@@ -125,7 +125,7 @@ export default function PipelineAnalytics() {
             count: stageOpportunities.length,
             value: stageValue,
             conversionRate: stage.default_probability * 100,
-            avgTimeInStage: 14 // Mock data - would calculate from stage history
+            avgTimeInStage: 0 // Would calculate from stage history
           };
         }) || [];
 
@@ -159,7 +159,7 @@ export default function PipelineAnalytics() {
           totalValue,
           totalOpportunities,
           avgDealSize,
-          avgCycleTime: 30, // Mock data
+          avgCycleTime: 0, // Would calculate from opportunity history
           conversionRate,
           activitiesCount: activities?.length || 0
         });

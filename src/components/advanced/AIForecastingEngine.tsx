@@ -62,79 +62,10 @@ export const AIForecastingEngine = () => {
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     try {
-      // Mock forecast data
-      const mockForecastData: ForecastData[] = [
-        { period: 'Jan', predicted: 850000, actual: 820000, confidence: 92 },
-        { period: 'Feb', predicted: 920000, actual: 950000, confidence: 89 },
-        { period: 'Mar', predicted: 1100000, actual: 1080000, confidence: 94 },
-        { period: 'Apr', predicted: 1250000, confidence: 87 },
-        { period: 'May', predicted: 1350000, confidence: 85 },
-        { period: 'Jun', predicted: 1420000, confidence: 88 }
-      ];
-
-      const mockInsights: Insight[] = [
-        {
-          id: '1',
-          type: 'warning',
-          title: 'Conversion Rate Decline Detected',
-          description: 'Your qualification to proposal conversion rate has dropped by 15% this month. Consider reviewing qualification criteria.',
-          confidence: 94,
-          impact: 'high',
-          actionable: true
-        },
-        {
-          id: '2',
-          type: 'success',
-          title: 'Strong Q2 Pipeline Building',
-          description: 'Q2 pipeline is 23% ahead of the same period last year. Enterprise deals are driving growth.',
-          confidence: 91,
-          impact: 'high',
-          actionable: false
-        },
-        {
-          id: '3',
-          type: 'recommendation',
-          title: 'Focus on Mid-Market Segment',
-          description: 'AI analysis suggests increasing focus on $50K-$200K deals will optimize win rate and cycle time.',
-          confidence: 87,
-          impact: 'medium',
-          actionable: true
-        },
-        {
-          id: '4',
-          type: 'info',
-          title: 'Seasonal Pattern Identified',
-          description: 'Historical data shows 18% increase in deal closures during the last two weeks of each quarter.',
-          confidence: 96,
-          impact: 'medium',
-          actionable: true
-        }
-      ];
-
-      const mockScenarios: ScenarioAnalysis[] = [
-        {
-          scenario: 'Conservative',
-          probability: 80,
-          revenue: 4200000,
-          factors: ['Current pipeline velocity', 'Historical close rates', 'Market conditions']
-        },
-        {
-          scenario: 'Most Likely',
-          probability: 60,
-          revenue: 4850000,
-          factors: ['Deal acceleration', 'New market expansion', 'Product launches']
-        },
-        {
-          scenario: 'Optimistic',
-          probability: 25,
-          revenue: 5600000,
-          factors: ['Perfect execution', 'Market upturn', 'Competitive advantages']
-        }
-      ];
-
-      setForecastData(mockForecastData);
-      setInsights(mockInsights);
-      setScenarios(mockScenarios);
+      // Initialize empty data - in real app, fetch from API
+      setForecastData([]);
+      setInsights([]);
+      setScenarios([]);
     } catch (error) {
       console.error('Error generating forecast:', error);
     } finally {

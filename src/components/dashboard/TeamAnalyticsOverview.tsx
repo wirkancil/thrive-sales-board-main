@@ -37,31 +37,10 @@ export function TeamAnalyticsOverview({ selectedRep, dateRange }: DivisionAnalyt
   const [dealStatusData, setDealStatusData] = useState<DealStatusData[]>([]);
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API based on selectedRep and dateRange
-    const mockSalesRepData: SalesRepData[] = [
-      { name: "John Smith", deals: 12, value: 145000 },
-      { name: "Sarah Johnson", deals: 15, value: 180000 },
-      { name: "Mike Davis", deals: 9, value: 120000 },
-      { name: "Lisa Chen", deals: 18, value: 220000 },
-      { name: "Tom Wilson", deals: 7, value: 95000 }
-    ];
-
-    const mockWeeklyActivityData: WeeklyActivityData[] = [
-      { week: "Week 1", activities: 45, calls: 20, meetings: 12, emails: 13 },
-      { week: "Week 2", activities: 52, calls: 25, meetings: 15, emails: 12 },
-      { week: "Week 3", activities: 38, calls: 18, meetings: 10, emails: 10 },
-      { week: "Week 4", activities: 61, calls: 28, meetings: 18, emails: 15 }
-    ];
-
-    const mockDealStatusData: DealStatusData[] = [
-      { name: "Hot", value: 35, color: "#ef4444" },
-      { name: "Warm", value: 45, color: "#f59e0b" },
-      { name: "Cold", value: 20, color: "#6b7280" }
-    ];
-
-    setSalesRepData(mockSalesRepData);
-    setWeeklyActivityData(mockWeeklyActivityData);
-    setDealStatusData(mockDealStatusData);
+    // Initialize empty data - in real app, fetch from API based on selectedRep and dateRange
+    setSalesRepData([]);
+    setWeeklyActivityData([]);
+    setDealStatusData([]);
   }, [selectedRep, dateRange]);
 
   const formatCurrency = (value: number) => {

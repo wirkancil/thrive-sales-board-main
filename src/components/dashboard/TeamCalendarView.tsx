@@ -35,64 +35,8 @@ export function TeamCalendarView({ selectedRep, dateRange }: DivisionCalendarVie
   const [currentWeek, setCurrentWeek] = useState(new Date());
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API based on selectedRep and dateRange
-    const mockEvents: CalendarEvent[] = [
-      {
-        id: "1",
-        title: "Product Demo",
-        type: "demo",
-        startTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
-        endTime: new Date(Date.now() + 3 * 60 * 60 * 1000), // 3 hours from now
-        location: "Conference Room A",
-        customerName: "TechStart Inc",
-        attendees: [
-          { name: "Sarah Johnson", initials: "SJ" },
-          { name: "Client Team", initials: "CT", isExternal: true }
-        ],
-        priority: "high"
-      },
-      {
-        id: "2",
-        title: "Team Standup",
-        type: "meeting",
-        startTime: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        endTime: new Date(Date.now() + 24 * 60 * 60 * 1000 + 30 * 60 * 1000), // Tomorrow + 30min
-        location: "Virtual",
-        attendees: [
-          { name: "John Smith", initials: "JS" },
-          { name: "Mike Davis", initials: "MD" },
-          { name: "Lisa Chen", initials: "LC" }
-        ],
-        priority: "medium"
-      },
-      {
-        id: "3",
-        title: "Client Check-in",
-        type: "call",
-        startTime: new Date(Date.now() + 48 * 60 * 60 * 1000), // Day after tomorrow
-        endTime: new Date(Date.now() + 48 * 60 * 60 * 1000 + 45 * 60 * 1000), // + 45min
-        customerName: "Global Solutions Ltd",
-        attendees: [
-          { name: "Mike Davis", initials: "MD" },
-          { name: "Account Manager", initials: "AM", isExternal: true }
-        ],
-        priority: "medium"
-      },
-      {
-        id: "4",
-        title: "Sales Training",
-        type: "training",
-        startTime: new Date(Date.now() + 72 * 60 * 60 * 1000), // 3 days from now
-        endTime: new Date(Date.now() + 72 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000), // + 2 hours
-        location: "Training Room B",
-        attendees: [
-          { name: "All Team", initials: "AT" }
-        ],
-        priority: "low"
-      }
-    ];
-
-    setEvents(mockEvents);
+    // Initialize empty data - in real app, fetch from API
+    setEvents([]);
   }, [selectedRep, dateRange]);
 
   const getEventTypeColor = (type: string) => {

@@ -40,56 +40,10 @@ export function DepartmentAdvancedAnalytics({ selectedDivision, selectedRep, dat
   const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrendData[]>([]);
 
   useEffect(() => {
-    // TODO: Replace with real division performance data from opportunities and sales_activity_v2
-    // For now using placeholder data structure that matches real division names
-    const mockDivisionPerformance: DivisionPerformanceData[] = [
-      { division: "Level Head North", deals: 84, value: 1250000, conversion: 28.5, growth: 15.2 },
-      { division: "Level Head South", deals: 90, value: 1380000, conversion: 31.2, growth: 8.7 },
-      { division: "Level Head East", deals: 64, value: 980000, conversion: 25.8, growth: 12.3 },
-      { division: "Level Head West", deals: 81, value: 1180000, conversion: 29.1, growth: 18.9 },
-      { division: "Level Head International", deals: 45, value: 650000, conversion: 22.4, growth: 25.6 }
-    ];
-
-    const mockActivityHeatmap: ActivityHeatmapData[] = [
-      // Generate mock heatmap data for a week
-      { day: "Mon", time: "9AM", activities: 12 },
-      { day: "Mon", time: "10AM", activities: 18 },
-      { day: "Mon", time: "11AM", activities: 24 },
-      { day: "Mon", time: "2PM", activities: 15 },
-      { day: "Mon", time: "3PM", activities: 22 },
-      { day: "Tue", time: "9AM", activities: 16 },
-      { day: "Tue", time: "10AM", activities: 28 },
-      { day: "Tue", time: "11AM", activities: 20 },
-      { day: "Tue", time: "2PM", activities: 19 },
-      { day: "Tue", time: "3PM", activities: 25 },
-      { day: "Wed", time: "9AM", activities: 14 },
-      { day: "Wed", time: "10AM", activities: 22 },
-      { day: "Wed", time: "11AM", activities: 18 },
-      { day: "Wed", time: "2PM", activities: 21 },
-      { day: "Wed", time: "3PM", activities: 17 },
-      { day: "Thu", time: "9AM", activities: 20 },
-      { day: "Thu", time: "10AM", activities: 26 },
-      { day: "Thu", time: "11AM", activities: 23 },
-      { day: "Thu", time: "2PM", activities: 18 },
-      { day: "Thu", time: "3PM", activities: 24 },
-      { day: "Fri", time: "9AM", activities: 15 },
-      { day: "Fri", time: "10AM", activities: 19 },
-      { day: "Fri", time: "11AM", activities: 16 },
-      { day: "Fri", time: "2PM", activities: 13 },
-      { day: "Fri", time: "3PM", activities: 11 }
-    ];
-
-    const mockMonthlyTrends: MonthlyTrendData[] = [
-      { month: "Aug", deals: 285, value: 4200000, activities: 1250, conversion: 24.2 },
-      { month: "Sep", deals: 312, value: 4650000, activities: 1380, conversion: 26.8 },
-      { month: "Oct", deals: 298, value: 4420000, activities: 1290, conversion: 25.1 },
-      { month: "Nov", deals: 334, value: 4980000, activities: 1450, conversion: 28.3 },
-      { month: "Dec", deals: 364, value: 5440000, activities: 1520, conversion: 29.7 }
-    ];
-
-    setDivisionPerformance(mockDivisionPerformance);
-    setActivityHeatmap(mockActivityHeatmap);
-    setMonthlyTrends(mockMonthlyTrends);
+    // Initialize with empty data arrays - real data would come from API
+    setDivisionPerformance([]);
+    setActivityHeatmap([]);
+    setMonthlyTrends([]);
   }, [selectedDivision, selectedRep, dateRange]);
 
   const formatCurrency = (value: number) => {

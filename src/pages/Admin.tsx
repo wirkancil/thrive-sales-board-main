@@ -515,19 +515,23 @@ export default function Admin() {
                             onValueChange={(value) => handleDepartmentChange(user.id, value)}
                             disabled={isSaving}
                           >
-                            <SelectTrigger className="w-[160px]">
+                            <SelectTrigger className="w-[180px]">
                               <SelectValue placeholder="Department" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">None</SelectItem>
-                              {departments
-                                .filter(dep => {
-                                  const selectedDiv = currentDivisionId || user.division_id || null;
-                                  return selectedDiv ? dep.division_id === selectedDiv : true;
-                                })
-                                .map((dep) => (
-                                  <SelectItem key={dep.id} value={dep.id}>{dep.name}</SelectItem>
-                                ))}
+                              {(() => {
+                                const selectedDiv = (userUpdates[user.id]?.division_id !== undefined)
+                                  ? userUpdates[user.id]?.division_id
+                                  : user.division_id;
+                                const depsByDiv = selectedDiv
+                                  ? departments.filter((d) => d.division_id === selectedDiv)
+                                  : departments;
+                                const depsFinal = depsByDiv.length > 0 ? depsByDiv : departments;
+                                return depsFinal.map((dept) => (
+                                  <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                                ));
+                              })()}
                             </SelectContent>
                           </Select>
                         ) : (

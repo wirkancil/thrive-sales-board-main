@@ -60,89 +60,24 @@ export const CommunicationHub = () => {
   const { user } = useAuth();
 
   useEffect(() => {
+    const fetchCommunicationData = async () => {
+      setLoading(true);
+      try {
+        // Initialize empty data - in real app, fetch from API
+        setActivities([]);
+        setConversations([]);
+      } catch (error) {
+        console.error('Error fetching communication data:', error);
+        toast.error('Failed to load communication data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
     fetchCommunicationData();
   }, []);
 
-  const fetchCommunicationData = async () => {
-    setLoading(true);
-    try {
-      // Mock data - in real implementation, these would come from database
-      const mockActivities: Activity[] = [
-        {
-          id: '1',
-          type: 'message',
-          content: 'Following up on our discussion about the Q4 proposal. Can we schedule a call this week?',
-          author: { id: '1', name: 'John Smith', avatar: '/avatars/john.jpg' },
-          timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          opportunity_id: 'opp-1',
-          customer_name: 'Acme Corp',
-          priority: 'high'
-        },
-        {
-          id: '2',
-          type: 'call',
-          content: 'Had a 45-minute call with the procurement team. They\'re interested but need executive approval.',
-          author: { id: '2', name: 'Sarah Johnson', avatar: '/avatars/sarah.jpg' },
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          opportunity_id: 'opp-2',
-          customer_name: 'TechStart Inc',
-          attachments: [{ name: 'call-notes.pdf', type: 'pdf', url: '#' }]
-        },
-        {
-          id: '3',
-          type: 'email',
-          content: 'Sent proposal and pricing information to the decision makers.',
-          author: { id: '1', name: 'John Smith', avatar: '/avatars/john.jpg' },
-          timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-          opportunity_id: 'opp-1',
-          customer_name: 'Acme Corp'
-        },
-        {
-          id: '4',
-          type: 'meeting',
-          content: 'Product demo scheduled for next Tuesday at 2 PM EST.',
-          author: { id: '3', name: 'Mike Wilson', avatar: '/avatars/mike.jpg' },
-          timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          opportunity_id: 'opp-3',
-          customer_name: 'Global Solutions',
-          priority: 'medium'
-        }
-      ];
 
-      const mockConversations: Conversation[] = [
-        {
-          id: '1',
-          participants: [
-            { id: '1', name: 'John Smith', avatar: '/avatars/john.jpg' },
-            { id: '4', name: 'Alice Chen', avatar: '/avatars/alice.jpg' }
-          ],
-          last_message: 'Let\'s discuss the implementation timeline',
-          last_activity: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-          unread_count: 2,
-          opportunity_name: 'Acme Corp - Q4 Deal'
-        },
-        {
-          id: '2',
-          participants: [
-            { id: '2', name: 'Sarah Johnson', avatar: '/avatars/sarah.jpg' },
-            { id: '5', name: 'Bob Martinez', avatar: '/avatars/bob.jpg' }
-          ],
-          last_message: 'The contract has been approved',
-          last_activity: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-          unread_count: 0,
-          opportunity_name: 'TechStart Inc - Integration Project'
-        }
-      ];
-
-      setActivities(mockActivities);
-      setConversations(mockConversations);
-    } catch (error) {
-      console.error('Error fetching communication data:', error);
-      toast.error('Failed to load communication data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const sendMessage = () => {
     if (!newMessage.trim()) return;

@@ -52,8 +52,31 @@ export const useProfile = () => {
         .eq('id', currentUser.id)
         .maybeSingle();
 
-      if (error) {
+      // Jika tidak ada row, buat profil default
+      if (error && (error as any).code !== 'PGRST116') {
         throw error;
+      }
+
+      if (!data) {
+        const { data: newProfile, error: createError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: currentUser.id,
+            full_name: (currentUser as any)?.user_metadata?.full_name || currentUser.email || 'Unknown User',
+            role: 'account_manager',
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          throw createError;
+        }
+
+        setProfile(newProfile as any);
+        setTitleName(null);
+        setRegionName(null);
+        return;
       }
 
       setProfile(data as any);
@@ -161,7 +184,7 @@ export const useProfile = () => {
       'head': 'Level Head', 
       'manager': 'Level Manager',
       'account_manager': 'Field Sales Staff'
-    };
+    } as const;
     parts.push(roleNames[profile.role] || profile.role);
     
     // Add actual title name if available

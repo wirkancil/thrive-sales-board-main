@@ -120,8 +120,8 @@ function SalesTarget() {
       (sum, target) => sum + Number(target.amount),
       0
     );
-    // For now, using mock achieved data - this could come from deals/pipeline data
-    const achieved = totalTarget * 0.704; // 70.4% achievement rate
+    // For now, using zero achieved data - this could come from deals/pipeline data
+    const achieved = 0; // Would calculate from actual sales data
     const gap = totalTarget - achieved;
 
     return {
@@ -149,8 +149,8 @@ function SalesTarget() {
       (sum, target) => sum + Number(target.amount),
       0
     );
-    // For now, using mock achieved data - this could come from deals/pipeline data
-    const achieved = totalTarget * 0.704; // 70.4% achievement rate
+    // For now, using zero achieved data - this could come from deals/pipeline data
+    const achieved = 0; // Would calculate from actual sales data
     const gap = totalTarget - achieved;
 
     return {
@@ -184,7 +184,7 @@ function SalesTarget() {
     return Object.entries(targetsByAM)
       .map(([name, data]) => ({
         name,
-        value: data.value * 0.704, // Mock 70.4% achievement rate
+        value: 0, // Would calculate from actual sales data
         role: data.role,
       }))
       .sort((a, b) => {
@@ -299,7 +299,7 @@ function SalesTarget() {
       // Hitung pencapaian
       const achieved = Number.isFinite(Number(target.achieved))
         ? Number(target.achieved)
-        : amount * 0.704; // Mock jika tidak ada data
+        : 0; // Would calculate from actual sales data
 
       const current = acc[memberId];
       current.monthlyTarget += monthlyAmount;
@@ -410,7 +410,7 @@ function SalesTarget() {
       // Hitung pencapaian
       const achieved = Number.isFinite(Number(target.achieved))
         ? Number(target.achieved)
-        : amount * 0.704; // Mock jika tidak ada data
+        : 0; // Would calculate from actual sales data
 
       const current = acc[memberId];
       current.monthlyTarget += monthlyAmount;

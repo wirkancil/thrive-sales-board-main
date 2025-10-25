@@ -8,12 +8,17 @@ import { UserCheck, Users, AlertCircle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile, UserProfile } from '@/hooks/useProfile';
 import { toast } from 'sonner';
+import { useDivisions } from '@/hooks/useDivisions';
+import { useDepartments } from '@/hooks/useDepartments';
+import { useAdminUsers } from '@/hooks/useAdminUsers';
 
 interface PendingUser {
   id: string;
   full_name: string | null;
   role: 'admin' | 'head' | 'manager' | 'account_manager';
   created_at: string;
+  division_id?: string | null;
+  department_id?: string | null;
 }
 
 export const RoleAssignmentPanel = () => {
@@ -22,17 +27,49 @@ export const RoleAssignmentPanel = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
 
+  const { divisions, loading: loadingDivs } = useDivisions();
+  const { departments, loading: loadingDepts } = useDepartments();
+  const { updateUserProfile } = useAdminUsers('', 'all');
+
+  const [roleDraft, setRoleDraft] = useState<Record<string, UserProfile['role']>>({});
+  const [assignments, setAssignments] = useState<Record<string, { divisionId: string | null; departmentId: string | null }>>({});
+
   const fetchPendingUsers = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('*')
-        .in('role', ['account_manager', 'head', 'manager']) // Show users who need role assignments
+        .select('id, full_name, role, created_at, division_id, department_id')
+        .in('role', ['account_manager', 'head', 'manager'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setPendingUsers(data as PendingUser[] || []);
+      const allUsers = (data as PendingUser[]) || [];
+      
+      // Filter to only show truly pending users based on role requirements
+      const pendingUsers = allUsers.filter(user => {
+        // Head role requires division_id
+        if (user.role === 'head' && !user.division_id) return true;
+        // Manager and account_manager roles require department_id
+        if ((user.role === 'manager' || user.role === 'account_manager') && !user.department_id) return true;
+        // If all requirements are met, user is not pending
+        return false;
+      });
+      
+      setPendingUsers(pendingUsers);
+
+      // Prefill drafts from existing assignments
+      const nextAssignments: Record<string, { divisionId: string | null; departmentId: string | null }> = {};
+      const nextRoles: Record<string, UserProfile['role']> = {} as any;
+      for (const u of pendingUsers) {
+        nextAssignments[u.id] = {
+          divisionId: u.division_id ?? null,
+          departmentId: u.department_id ?? null,
+        };
+        nextRoles[u.id] = u.role as UserProfile['role'];
+      }
+      setAssignments(nextAssignments);
+      setRoleDraft(nextRoles);
     } catch (error: any) {
       console.error('Error fetching pending users:', error);
       toast.error('Failed to load pending users');
@@ -41,38 +78,95 @@ export const RoleAssignmentPanel = () => {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: UserProfile['role']) => {
+  const handleSave = async (user: any) => {
+    console.log('🔄 Starting handleSave for user:', user);
+    
+    const targetRole = draftRoles[user.id];
+    const selectedDivision = selectedDivisions[user.id];
+    const selectedDepartment = selectedDepartments[user.id];
+
+    console.log('📋 Role approval data:', {
+      userId: user.id,
+      targetRole,
+      selectedDivision,
+      selectedDepartment,
+      currentUserRole: user.role,
+      currentDivisionId: user.division_id,
+      currentDepartmentId: user.department_id
+    });
+
+    if (!targetRole) {
+      console.error('❌ No target role selected');
+      toast({
+        title: "Error",
+        description: "Please select a role first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate role requirements
+    if (targetRole === 'head' && !selectedDivision) {
+      console.error('❌ Head role requires division');
+      toast({
+        title: "Error", 
+        description: "Head role requires a division selection",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if ((targetRole === 'manager' || targetRole === 'account_manager') && !selectedDepartment) {
+      console.error('❌ Manager/Account Manager role requires department');
+      toast({
+        title: "Error",
+        description: "Manager and Account Manager roles require a department selection", 
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUpdatingUsers(prev => ({ ...prev, [user.id]: true }));
+    console.log('🔄 Set updating status for user:', user.id);
+
     try {
-      setUpdating(userId);
+      console.log('🚀 Calling updateUserProfile...');
+      const result = await updateUserProfile(
+        user.id,
+        targetRole,
+        selectedDivision,
+        selectedDepartment
+      );
       
-      // Get current user data for audit logging
-      const { data: currentUser } = await supabase
-        .from('user_profiles')
-        .select('role, full_name')
-        .eq('id', userId)
-        .single();
+      console.log('✅ updateUserProfile result:', result);
 
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
+      if (result.success) {
+        console.log('🎉 Profile update successful, showing success toast');
+        toast({
+          title: "Success",
+          description: `User role updated to ${targetRole} successfully`,
+        });
 
-      if (error) throw error;
-
-      // Role change is automatically logged by the database trigger
-      toast.success(`User role updated to ${newRole.replace('_', ' ')}`);
-      fetchPendingUsers(); // Refresh the list
-    } catch (error: any) {
-      console.error('Error updating user role:', error);
-      
-      // Log the failed attempt
-      if (error?.message?.includes('Insufficient privileges')) {
-        toast.error('You do not have permission to assign this role');
+        console.log('⏳ Waiting 500ms before refreshing data...');
+        // Wait a bit for database consistency
+        setTimeout(() => {
+          console.log('🔄 Calling fetchPendingUsers to refresh data');
+          fetchPendingUsers();
+        }, 500);
       } else {
-        toast.error(error?.message || 'Failed to update user role');
+        console.error('❌ Profile update failed:', result.error);
+        throw new Error(result.error || 'Failed to update profile');
       }
+    } catch (error: any) {
+      console.error('💥 Error in handleSave:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update user role",
+        variant: "destructive",
+      });
     } finally {
-      setUpdating(null);
+      console.log('🏁 Clearing updating status for user:', user.id);
+      setUpdatingUsers(prev => ({ ...prev, [user.id]: false }));
     }
   };
 
@@ -93,10 +187,10 @@ export const RoleAssignmentPanel = () => {
           <div>
             <CardTitle className="flex items-center gap-2">
               <UserCheck className="h-5 w-5" />
-              Manage Roles
+              Manage Roles & Assignments
             </CardTitle>
             <CardDescription>
-              Assign roles to pending users in your organization
+              Assign roles and set division/department for pending users
             </CardDescription>
           </div>
           <Button 
@@ -131,47 +225,124 @@ export const RoleAssignmentPanel = () => {
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Registered</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Division</TableHead>
+                <TableHead>Department</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pendingUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">
-                    {user.full_name || 'No name provided'}
-                  </TableCell>
-                  <TableCell>No email available</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                      <AlertCircle className="h-3 w-3" />
-                      Pending
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
+              {pendingUsers.map((user) => {
+                const draftRole = roleDraft[user.id] || user.role;
+                const assignment = assignments[user.id] || { divisionId: null, departmentId: null };
+                const availableDepartments = assignment.divisionId
+                  ? departments.filter((d) => d.division_id === assignment.divisionId)
+                  : departments;
+
+                return (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">
+                      {user.full_name || 'No name provided'}
+                    </TableCell>
+                    <TableCell>No email available</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                        <AlertCircle className="h-3 w-3" />
+                        Pending
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {new Date(user.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
                       <Select
+                        value={draftRole}
                         disabled={updating === user.id}
-                        onValueChange={(value) => updateUserRole(user.id, value as UserProfile['role'])}
+                        onValueChange={(value) => setRoleDraft((prev) => ({ ...prev, [user.id]: value as UserProfile['role'] }))}
                       >
-                        <SelectTrigger className="w-[140px]">
+                        <SelectTrigger className="w-[160px]">
                           <SelectValue placeholder="Assign role" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="account_manager">Field Sales Staff</SelectItem>
-                           <SelectItem value="head">Level Head</SelectItem>
-                           <SelectItem value="manager">Level Manager</SelectItem>
+                          <SelectItem value="head">Level Head</SelectItem>
+                          <SelectItem value="manager">Level Manager</SelectItem>
                         </SelectContent>
                       </Select>
-                      {updating === user.id && (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={assignment.divisionId || undefined}
+                        disabled={updating === user.id || loadingDivs}
+                        onValueChange={(value) => setAssignments((prev) => ({
+                          ...prev,
+                          [user.id]: { ...prev[user.id], divisionId: value }
+                        }))}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder={loadingDivs ? 'Loading...' : 'Select division'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {divisions.length === 0 ? (
+                            <SelectItem value="" disabled>
+                              {loadingDivs ? 'Loading...' : 'No divisions'}
+                            </SelectItem>
+                          ) : (
+                            divisions.map((div) => (
+                              <SelectItem key={div.id} value={div.id}>{div.name}</SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={assignment.departmentId || undefined}
+                        disabled={updating === user.id || loadingDepts || (draftRole === 'head')}
+                        onValueChange={(value) => setAssignments((prev) => ({
+                          ...prev,
+                          [user.id]: { ...prev[user.id], departmentId: value }
+                        }))}
+                      >
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue placeholder={loadingDepts ? 'Loading...' : 'Select department'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(() => {
+                            const depsByDiv = availableDepartments;
+                            const depsFinal = depsByDiv.length > 0 ? depsByDiv : departments;
+                            if (depsFinal.length === 0) {
+                              return (
+                                <SelectItem value="" disabled>
+                                  {loadingDepts ? 'Loading...' : 'No departments'}
+                                </SelectItem>
+                              );
+                            }
+                            return depsFinal.map((dept) => (
+                              <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                            ));
+                          })()}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleSave(user)}
+                          disabled={updating === user.id}
+                        >
+                          Save
+                        </Button>
+                        {updating === user.id && (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}

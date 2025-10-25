@@ -69,110 +69,33 @@ export const SyncManager = () => {
   const [activeSync, setActiveSync] = useState<string | null>(null);
 
   useEffect(() => {
+    const fetchSyncData = async () => {
+      setLoading(true);
+      try {
+        // Initialize empty data - in real app, fetch from API
+        setConnections([]);
+        setActivities([]);
+        setConflicts([]);
+      } catch (error) {
+        console.error('Error fetching sync data:', error);
+        toast.error('Failed to load sync data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
     fetchSyncData();
   }, []);
 
-  const fetchSyncData = async () => {
+
+
+  const handleRefresh = () => {
     setLoading(true);
-    try {
-      // Mock data for sync connections
-      const mockConnections: SyncConnection[] = [
-        {
-          id: 'sf-1',
-          name: 'Salesforce Production',
-          type: 'salesforce',
-          status: 'active',
-          lastSync: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-          nextSync: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-          syncFrequency: '15min',
-          direction: 'bidirectional',
-          dataTypes: ['contacts', 'opportunities', 'activities'],
-          recordsProcessed: 15420,
-          errors: 2,
-          isOnline: true
-        },
-        {
-          id: 'hs-1',
-          name: 'HubSpot Marketing',
-          type: 'hubspot',
-          status: 'active',
-          lastSync: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          nextSync: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-          syncFrequency: '4hours',
-          direction: 'inbound',
-          dataTypes: ['contacts', 'companies'],
-          recordsProcessed: 8920,
-          errors: 0,
-          isOnline: true
-        },
-        {
-          id: 'pd-1',
-          name: 'Pipedrive Sales',
-          type: 'pipedrive',
-          status: 'error',
-          lastSync: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          nextSync: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          syncFrequency: '1hour',
-          direction: 'bidirectional',
-          dataTypes: ['deals', 'contacts'],
-          recordsProcessed: 3245,
-          errors: 15,
-          isOnline: false
-        }
-      ];
-
-      const mockActivities: SyncActivity[] = [
-        {
-          id: '1',
-          connectionId: 'sf-1',
-          connectionName: 'Salesforce Production',
-          type: 'incremental',
-          status: 'success',
-          startTime: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-          endTime: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
-          recordsProcessed: 47,
-          recordsSkipped: 3,
-          errors: 0,
-          details: 'Synchronized 47 opportunity updates'
-        },
-        {
-          id: '2',
-          connectionId: 'pd-1',
-          connectionName: 'Pipedrive Sales',
-          type: 'full',
-          status: 'failed',
-          startTime: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          endTime: new Date(Date.now() - 6 * 60 * 60 * 1000 + 30000).toISOString(),
-          recordsProcessed: 0,
-          recordsSkipped: 0,
-          errors: 1,
-          details: 'Authentication failed - API key expired'
-        }
-      ];
-
-      const mockConflicts: SyncConflict[] = [
-        {
-          id: '1',
-          connectionId: 'sf-1',
-          recordType: 'opportunity',
-          recordId: 'opp-123',
-          localValue: { amount: 50000, stage: 'Proposal' },
-          remoteValue: { amount: 55000, stage: 'Negotiation' },
-          conflictField: 'amount,stage',
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          resolved: false
-        }
-      ];
-
-      setConnections(mockConnections);
-      setActivities(mockActivities);
-      setConflicts(mockConflicts);
-    } catch (error) {
-      console.error('Error fetching sync data:', error);
-      toast.error('Failed to load sync data');
-    } finally {
+    // In real app, this would refetch data from API
+    setTimeout(() => {
       setLoading(false);
-    }
+      toast.success('Data refreshed');
+    }, 1000);
   };
 
   const handleToggleConnection = async (connectionId: string, enabled: boolean) => {
@@ -290,7 +213,7 @@ export const SyncManager = () => {
           </h2>
           <p className="text-muted-foreground">Monitor and manage real-time data synchronization</p>
         </div>
-        <Button onClick={fetchSyncData} variant="outline">
+        <Button onClick={handleRefresh} variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>
