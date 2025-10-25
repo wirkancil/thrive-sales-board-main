@@ -5,20 +5,22 @@ import { Clock, Shield, Users, Building, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 const PendingApproval = () => {
   const { signOut } = useAuth();
   const { profile, loading } = useProfile();
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     try {
       await signOut();
-      // Force navigation to auth page
-      window.location.href = '/auth';
+      // Navigate within SPA to avoid full page reloads
+      navigate('/auth', { replace: true });
     } catch (error) {
       console.error('Logout error:', error);
-      // Even if logout fails, navigate to auth page
-      window.location.href = '/auth';
+      // Navigate even if logout fails
+      navigate('/auth', { replace: true });
     }
   };
 

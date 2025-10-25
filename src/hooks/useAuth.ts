@@ -74,6 +74,11 @@ export const useAuth = () => {
 
   const signOut = async () => {
     try {
+      // Stop auto refresh to avoid aborted refresh requests during navigation/logout
+      try {
+        supabase.auth.stopAutoRefresh();
+      } catch {}
+
       // Try server/global logout first
       const { error } = await supabase.auth.signOut({ scope: "global" });
 

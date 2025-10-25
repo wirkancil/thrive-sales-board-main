@@ -47,7 +47,7 @@ WHERE created_by NOT IN (
     SELECT id FROM auth.users WHERE email IN ('admin@gmail.com', 'hidayat.suli@gmail.com')
 );
 
--- 6. Verifikasi hasil cleanup
+-- 6. Verifikasi hasil cleanupx
 SELECT '=== MINIMAL CLEANUP RESULTS ===' as info;
 SELECT 'User Profiles (should be 2):' as table_info, COUNT(*) as count FROM public.user_profiles;
 SELECT 'Admin Users:' as table_info, email as data FROM auth.users WHERE email IN ('admin@gmail.com', 'hidayat.suli@gmail.com');

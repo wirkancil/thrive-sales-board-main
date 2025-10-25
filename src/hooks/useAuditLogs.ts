@@ -94,8 +94,6 @@ export const useAuditLogs = (filters?: AuditLogFilters, pageSize: number = 5) =>
       setAuditLogs(transformedData);
       
       // Calculate total pages (estimate based on current data)
-      // Note: Supabase doesn't provide total count with range queries easily
-      // For now, we'll assume there might be more data if we get a full page
       const hasMoreData = transformedData.length === pageSize;
       setTotalPages(currentPage + (hasMoreData ? 1 : 0));
     } catch (err: any) {
@@ -127,10 +125,33 @@ export const useAuditLogs = (filters?: AuditLogFilters, pageSize: number = 5) =>
       if (error) throw error;
       
       // Refresh logs after creating new one
-      await fetchAuditLogs();
+      await fetchAuditLogs(1);
     } catch (err: any) {
       console.error('Error logging audit event:', err);
       throw err;
+    }
+  };
+
+  const clearAuditLogs = async (scope: 'non_admin' | 'all' = 'non_admin') => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase.rpc('admin_clear_audit_logs', {
+        p_scope: scope,
+      });
+
+      if (error) throw error;
+
+      // Refetch first page after clearing
+      await fetchAuditLogs(1);
+      return data;
+    } catch (err: any) {
+      console.error('Error clearing audit logs:', err);
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -201,6 +222,7 @@ export const useAuditLogs = (filters?: AuditLogFilters, pageSize: number = 5) =>
     currentPage,
     totalPages,
     logAuditEvent,
+    clearAuditLogs,
     getActivitySummary,
     getTableActivity,
     getUserActivity,

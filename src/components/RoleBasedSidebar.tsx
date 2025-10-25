@@ -57,8 +57,7 @@ export const RoleBasedSidebar = ({
     } catch (error) {
       console.log('Logout completed (session may have been expired)');
     } finally {
-      // Always clear local state and redirect
-      localStorage.clear();
+      // Redirect without clearing arbitrary local storage
       if (onClose) onClose();
       navigate('/auth', { replace: true });
     }
