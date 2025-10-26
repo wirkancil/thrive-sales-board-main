@@ -79,44 +79,28 @@ export const useAuth = () => {
         supabase.auth.stopAutoRefresh();
       } catch {}
 
-      // Try server/global logout first
-      const { error } = await supabase.auth.signOut({ scope: "global" });
-
-      // If the server says the session doesn't exist (common when token expired),
-      // clear local auth state and treat as success
-      const isSessionNotFound =
-        !!error &&
-        (error.message?.includes("session_not_found") ||
-          error.message?.includes(
-            "Session from session_id claim in JWT does not exist"
-          ) ||
-          /\bsession[_\s]?not[_\s]?found\b/i.test(error.message || "") ||
-          (error as any)?.status === 403);
-
-      if (isSessionNotFound) {
-        try {
-          await supabase.auth.signOut({ scope: "local" }); // ensure local tokens are removed
-        } catch {}
-        setSession(null);
-        setUser(null);
-        return { error: null };
-      }
-
-      // If there's any other error, still try local logout and clear state
-      if (error) {
-        try {
-          await supabase.auth.signOut({ scope: "local" });
-        } catch {}
-        setSession(null);
-        setUser(null);
-        return { error: null }; // Treat as success since we cleared local state
-      }
-
-      return { error };
-    } catch (err) {
-      // If anything fails, ensure we clear local state
+      // Do not call global/server logout to avoid 403 logs
+      // Always purge local session and tokens
       try {
         await supabase.auth.signOut({ scope: "local" });
+      } catch {}
+      try {
+        localStorage.removeItem('tsb-auth-dev');
+        Object.keys(localStorage)
+          .filter(k => k.startsWith('sb-') && k.includes('auth-token'))
+          .forEach(k => localStorage.removeItem(k));
+      } catch {}
+
+      setSession(null);
+      setUser(null);
+      return { error: null };
+    } catch (err) {
+      // Ensure we clear local state even if any step fails
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {}
+      try {
+        localStorage.removeItem('tsb-auth-dev');
       } catch {}
       setSession(null);
       setUser(null);

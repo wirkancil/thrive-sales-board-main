@@ -40,17 +40,29 @@ export const CalendarView: React.FC = () => {
       const endDate = endOfMonth(currentDate);
 
       const { data, error } = await supabase
-        .from('activities')
+        .from('sales_activity_v2')
         .select('*')
         .eq('created_by', user.id)
-        .not('starts_at', 'is', null)
-        .gte('starts_at', startDate.toISOString())
-        .lte('starts_at', endDate.toISOString())
-        .order('starts_at', { ascending: true });
+        .not('scheduled_at', 'is', null)
+        .gte('scheduled_at', startDate.toISOString())
+        .lte('scheduled_at', endDate.toISOString())
+        .order('scheduled_at', { ascending: true });
 
       if (error) throw error;
 
-      setEvents((data || []) as CalendarEvent[]);
+      const mappedEvents: CalendarEvent[] = (data || []).map((a: any) => ({
+        id: a.id,
+        subject: a.subject || (a.activity_type ? String(a.activity_type).replace('_', ' ') : 'Activity'),
+        starts_at: a.scheduled_at,
+        ends_at: null,
+        location: null,
+        description: a.description || a.notes || null,
+        type: a.activity_type || null,
+        status: a.status || undefined,
+        created_at: a.created_at || new Date().toISOString()
+      }));
+
+      setEvents(mappedEvents);
     } catch (error) {
       console.error('Error fetching events:', error);
       toast({
@@ -70,7 +82,7 @@ export const CalendarView: React.FC = () => {
   const handleDeleteEvent = async (eventId: string) => {
     try {
       const { error } = await supabase
-        .from('activities')
+        .from('sales_activities')
         .delete()
         .eq('id', eventId)
         .eq('created_by', user?.id);

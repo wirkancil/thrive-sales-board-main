@@ -6,11 +6,43 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 const PendingApproval = () => {
   const { signOut } = useAuth();
   const { profile, loading } = useProfile();
   const navigate = useNavigate();
+
+  // Jika profile sudah approved, keluar dari halaman pending secara otomatis
+  useEffect(() => {
+    if (loading) return;
+    if (!profile) return;
+
+    const roleText = String(profile.role);
+    const needsApproval = (
+      roleText === 'pending' ||
+      (profile.role === 'manager' && !profile.department_id)
+    );
+
+    if (!needsApproval) {
+      switch (profile.role) {
+        case 'admin':
+          navigate('/admin/dashboard', { replace: true });
+          return;
+        case 'account_manager':
+          navigate('/sales-dashboard', { replace: true });
+          return;
+        case 'head':
+          navigate('/executive-dashboard', { replace: true });
+          return;
+        case 'manager':
+          navigate('/team-dashboard', { replace: true });
+          return;
+        default:
+          break;
+      }
+    }
+  }, [profile, loading, navigate]);
 
   const handleSignOut = async () => {
     try {

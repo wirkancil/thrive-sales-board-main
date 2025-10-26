@@ -11,17 +11,85 @@ import { BarChart3, TrendingUp, Search, AlertTriangle, Command, Plus, FileText }
 import GlobalSearchCommand from "@/components/advanced/GlobalSearchCommand";
 import { useManagerTeam } from "@/hooks/useManagerTeam";
 import { toast } from "sonner";
+import { useEntityScopedData } from "@/hooks/useEntityScopedData";
+import { formatCurrency } from "@/lib/constants";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdvancedPipeline() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchOpen, setSearchOpen] = useState(false);
   const { teamMembers } = useManagerTeam();
+  const { opportunities, loading: dataLoading } = useEntityScopedData();
+  const [pipelineItems, setPipelineItems] = useState<any[]>([]);
   
   const activeTab = searchParams.get('tab') || 'analytics';
   
   const setActiveTab = (tab: string) => {
     setSearchParams({ tab });
   };
+
+  // Derived analytics from entity-scoped opportunities
+  const activeOpps = opportunities.filter(o => o.stage !== 'Closed Won' && o.stage !== 'Closed Lost');
+  const pipelineValue = activeOpps.reduce((sum, o) => sum + (o.amount || 0), 0);
+  const totalRevenue = opportunities
+    .filter(o => o.stage === 'Closed Won')
+    .reduce((sum, o) => sum + (o.amount || 0), 0);
+  const conversionRate = opportunities.length > 0
+    ? (opportunities.filter(o => o.stage === 'Closed Won').length / opportunities.length) * 100
+    : 0;
+
+  const revenueTrends = (() => {
+    const now = new Date();
+    const trends: { label: string; value: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('en-US', { month: 'short' });
+      const value = opportunities
+        .filter(o => o.stage === 'Closed Won' && (o.created_at || '').slice(0, 7) === monthKey)
+        .reduce((sum, o) => sum + (o.amount || 0), 0);
+      trends.push({ label, value });
+    }
+    return trends;
+  })();
+
+  // Fetch pipeline items for margin trends
+  useEffect(() => {
+    const fetchItems = async () => {
+      const { data, error } = await supabase
+        .from('pipeline_items')
+        .select('amount, cost_of_goods, service_costs, other_expenses, expected_close_date, created_at')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setPipelineItems(data);
+      }
+    };
+    fetchItems();
+  }, []);
+
+  const marginTrends = (() => {
+    const now = new Date();
+    const trends: { label: string; value: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const value = (pipelineItems || [])
+        .filter((item: any) => {
+          const dateStr = item.expected_close_date || item.created_at;
+          return dateStr ? String(dateStr).slice(0, 7) === monthKey : false;
+        })
+        .reduce((sum: number, item: any) => {
+          const amount = Number(item.amount) || 0;
+          const cogs = Number(item.cost_of_goods) || 0;
+          const services = Number(item.service_costs) || 0;
+          const others = Number(item.other_expenses) || 0;
+          return sum + (amount - (cogs + services + others));
+        }, 0);
+      trends.push({ label: d.toLocaleString('en-US', { month: 'short' }), value });
+    }
+    return trends;
+  })();
 
   // Global keyboard shortcut for search
   useEffect(() => {
@@ -75,7 +143,12 @@ export default function AdvancedPipeline() {
               <p className="text-muted-foreground text-sm">Advanced analytics and reporting</p>
             </div>
             <ExportButton 
-              data={[]} 
+              data={[{ 
+                totalRevenue, 
+                activeOpportunities: activeOpps.length, 
+                conversionRate: Number(conversionRate.toFixed(1)), 
+                pipelineValue 
+              }]} 
               filename="advanced-pipeline-analytics"
             />
           </div>
@@ -90,19 +163,19 @@ export default function AdvancedPipeline() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-2xl font-bold text-primary">$2.4M</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(totalRevenue)}</div>
                     <div className="text-sm text-muted-foreground">Total Revenue</div>
                   </div>
                   <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-2xl font-bold text-success">156</div>
+                    <div className="text-2xl font-bold text-success">{activeOpps.length}</div>
                     <div className="text-sm text-muted-foreground">Active Opportunities</div>
                   </div>
                   <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-2xl font-bold text-warning">67%</div>
+                    <div className="text-2xl font-bold text-warning">{Math.round(conversionRate)}%</div>
                     <div className="text-sm text-muted-foreground">Conversion Rate</div>
                   </div>
                   <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-2xl font-bold text-accent">$3.8M</div>
+                    <div className="text-2xl font-bold text-accent">{formatCurrency(pipelineValue)}</div>
                     <div className="text-sm text-muted-foreground">Pipeline Value</div>
                   </div>
                 </div>
@@ -110,14 +183,30 @@ export default function AdvancedPipeline() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Revenue Trends</CardTitle>
+                      <CardTitle className="text-lg">Revenue & Margin Trends</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-48 flex items-center justify-center bg-muted/20 rounded-lg">
-                        <div className="text-center">
-                          <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                          <p className="text-sm text-muted-foreground">Revenue trends chart</p>
-                        </div>
+                      <div className="space-y-2">
+                        {revenueTrends.map((rt) => (
+                          <div key={rt.label} className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">{rt.label}</span>
+                            <span className="font-medium">{formatCurrency(rt.value)}</span>
+                          </div>
+                        ))}
+                        {revenueTrends.every(rt => rt.value === 0) && (
+                          <div className="text-sm text-muted-foreground">No closed-won revenue in the last 6 months</div>
+                        )}
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {marginTrends.map((mt) => (
+                          <div key={`m-${mt.label}`} className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">{mt.label}</span>
+                            <span className="font-medium">{formatCurrency(mt.value)}</span>
+                          </div>
+                        ))}
+                        {marginTrends.every(mt => mt.value === 0) && (
+                          <div className="text-sm text-muted-foreground">No margin data in the last 6 months</div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -131,7 +220,7 @@ export default function AdvancedPipeline() {
                         {teamMembers.slice(0, 3).map((member) => (
                           <div key={member.id} className="flex items-center justify-between">
                             <span className="font-medium">{member.full_name}</span>
-                            <Badge variant="secondary">{Math.floor(Math.random() * 100)}%</Badge>
+                            <Badge variant="secondary">{opportunities.filter(o => o.owner_id === member.id).length} opps</Badge>
                           </div>
                         ))}
                       </div>
@@ -415,20 +504,9 @@ export default function AdvancedPipeline() {
                         <CardTitle className="text-lg">Search Tips</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="space-y-3 text-sm">
-                          <div>
-                            <div className="font-medium">⌘/Ctrl + K</div>
-                            <div className="text-muted-foreground">Open search from anywhere</div>
-                          </div>
-                          <div>
-                            <div className="font-medium">Search by type</div>
-                            <div className="text-muted-foreground">Results grouped by opportunities, contacts, etc.</div>
-                          </div>
-                          <div>
-                            <div className="font-medium">Fuzzy matching</div>
-                            <div className="text-muted-foreground">Find results even with typos</div>
-                          </div>
-                        </div>
+                        <p className="text-muted-foreground text-sm">
+                          Use filters and keywords to refine your search. Try typing "status:won" or "stage:proposal" to quickly find specific opportunities.
+                        </p>
                       </CardContent>
                     </Card>
                   </div>

@@ -27,7 +27,7 @@ export const MyActivities: React.FC = () => {
         const { data: user } = await supabase.auth.getUser();
         if (!user.user) return;
 
-        const { data: activitiesData } = await supabase
+        const { data: activitiesData, error } = await supabase
           .from('sales_activity_v2')
           .select(`
             id,
@@ -41,6 +41,29 @@ export const MyActivities: React.FC = () => {
           .eq('created_by', user.user.id)
           .order('scheduled_at', { ascending: false })
           .limit(5);
+
+        // Fallback to legacy table if v2 relation is missing
+        if (error && (error.code === '42P01' || (error.message || '').includes('sales_activity_v2'))) {
+          const { data: legacyData, error: legacyError } = await supabase
+            .from('sales_activity')
+            .select('id, activity_type, activity_time, created_at, notes, customer_name')
+            .eq('user_id', user.user.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          if (legacyError) throw legacyError;
+
+          const formattedActivities = (legacyData || []).map((activity: any) => ({
+            id: activity.id,
+            activity_type: activity.activity_type,
+            scheduled_at: activity.activity_time || activity.created_at,
+            status: 'scheduled',
+            notes: activity.notes,
+            customer_name: activity.customer_name || 'Unknown Customer',
+            opportunity_name: undefined,
+          }));
+          setActivities(formattedActivities);
+          return;
+        }
 
         if (activitiesData) {
           const formattedActivities = activitiesData.map(activity => ({

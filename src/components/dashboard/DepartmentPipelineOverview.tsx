@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Target, ExternalLink, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DepartmentPipelineOverviewProps {
   selectedDivision: string;
@@ -22,13 +23,119 @@ interface DivisionPipelineData {
   total: number;
 }
 
+type StageKey = "Lead" | "Contacted" | "Proposal Sent" | "Negotiation" | "Won" | "Lost";
+
 export function DepartmentPipelineOverview({ selectedDivision, selectedRep, dateRange }: DepartmentPipelineOverviewProps) {
   const navigate = useNavigate();
   const [pipelineData, setPipelineData] = useState<DivisionPipelineData[]>([]);
 
+  const getRange = (range: string) => {
+    const now = new Date();
+    const start = new Date(now);
+    switch (range) {
+      case "week": {
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+        start.setDate(diff);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 7);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+      case "quarter": {
+        const month = now.getMonth();
+        const qStartMonth = month - (month % 3);
+        start.setMonth(qStartMonth, 1);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setMonth(qStartMonth + 3, 1);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+      case "year": {
+        start.setMonth(0, 1);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setFullYear(start.getFullYear() + 1);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+      case "month":
+      default: {
+        start.setDate(1);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setMonth(start.getMonth() + 1, 1);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+    }
+  };
+
+  const normalizeStage = (stageName?: string): StageKey => {
+    const s = (stageName || '').toLowerCase();
+    if (s.includes('prospecting')) return 'Lead';
+    if (s.includes('qualification')) return 'Contacted';
+    if (s.includes('approach') || s.includes('discovery')) return 'Contacted';
+    if (s.includes('presentation') || s.includes('poc') || s.includes('proposal sent')) return 'Proposal Sent';
+    if (s.includes('proposal') || s.includes('negotiation')) return 'Negotiation';
+    if (s.includes('won')) return 'Won';
+    if (s.includes('lost')) return 'Lost';
+    if (s.includes('lead')) return 'Lead';
+    if (s.includes('contact')) return 'Contacted';
+    if (s.includes('proposal')) return 'Proposal Sent';
+    if (s.includes('negotiation')) return 'Negotiation';
+    return 'Lead';
+  };
+
   useEffect(() => {
-    // Initialize empty data - in real app, fetch from API based on selectedDivision, selectedRep, and dateRange
-    setPipelineData([]);
+    const fetchPipeline = async () => {
+      try {
+        const { from, to } = getRange(dateRange);
+        let query = supabase
+          .from('opportunities')
+          .select('id, stage, created_at, owner_id');
+
+        query = query.gte('created_at', from).lt('created_at', to);
+        if (selectedRep && selectedRep !== 'all') {
+          query = query.eq('owner_id', selectedRep);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const base: DivisionPipelineData = {
+          division: selectedRep === 'all' ? 'All Reps' : 'Selected Rep',
+          Lead: 0,
+          Contacted: 0,
+          'Proposal Sent': 0,
+          Negotiation: 0,
+          Won: 0,
+          Lost: 0,
+          total: 0,
+        };
+
+        (data || []).forEach((opp: any) => {
+          const key = normalizeStage(opp.stage);
+          (base as any)[key] += 1;
+          base.total += 1;
+        });
+
+        // If a single rep is selected, try to use their name for label
+        if (selectedRep && selectedRep !== 'all') {
+          const { data: prof } = await supabase
+            .from('user_profiles')
+            .select('full_name')
+            .eq('user_id', selectedRep)
+            .maybeSingle();
+          if (prof?.full_name) base.division = prof.full_name;
+        }
+
+        setPipelineData([base]);
+      } catch (err) {
+        console.error('Error fetching pipeline overview:', err);
+        setPipelineData([]);
+      }
+    };
+
+    fetchPipeline();
   }, [selectedDivision, selectedRep, dateRange]);
 
 

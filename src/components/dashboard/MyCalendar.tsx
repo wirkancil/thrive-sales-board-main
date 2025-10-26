@@ -34,17 +34,27 @@ export const MyCalendar: React.FC = () => {
         const oneWeekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
         const { data, error } = await supabase
-          .from('activities')
+          .from('sales_activity_v2')
           .select('*')
           .eq('created_by', user.user.id)
-          .not('starts_at', 'is', null)
-          .gte('starts_at', today.toISOString())
-          .lte('starts_at', oneWeekFromNow.toISOString())
-          .order('starts_at', { ascending: true })
+          .not('scheduled_at', 'is', null)
+          .gte('scheduled_at', today.toISOString())
+          .lte('scheduled_at', oneWeekFromNow.toISOString())
+          .order('scheduled_at', { ascending: true })
           .limit(5);
 
         if (error) throw error;
-        setEvents((data || []) as CalendarEvent[]);
+        const mapped: CalendarEvent[] = (data || []).map((a: any) => ({
+          id: a.id,
+          subject: a.subject || (a.activity_type ? String(a.activity_type).replace('_', ' ') : 'Activity'),
+          starts_at: a.scheduled_at,
+          ends_at: null,
+          location: null,
+          description: a.description || a.notes || null,
+          type: a.activity_type || null,
+          status: a.status || undefined,
+        }));
+        setEvents(mapped);
       } catch (error) {
         console.error('Error fetching calendar events:', error);
       } finally {
@@ -79,8 +89,11 @@ export const MyCalendar: React.FC = () => {
   const getEventIcon = (type?: string | null) => {
     switch(type) {
       case 'call': return Phone;
-      case 'meeting': return Video;
+      case 'meeting':
+      case 'meeting_online': return Video;
       case 'demo': return CalendarIcon;
+      case 'visit': return MapPin;
+      case 'go_show': return CalendarIcon;
       default: return CalendarIcon;
     }
   };

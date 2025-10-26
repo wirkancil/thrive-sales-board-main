@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/integrations/supabase/client";
 
 function SalesTarget() {
   const { profile } = useProfile();
@@ -47,6 +48,12 @@ function SalesTarget() {
 
   const [amTableDataMargin, setAmTableDataMargin] = useState([]);
   const [amTableDataRevenue, setAmTableDataRevenue] = useState([]);
+
+  // Actuals (Achieved) computed from won opportunities within selected period
+  const [achievedTeamMargin, setAchievedTeamMargin] = useState(0);
+  const [achievedTeamRevenue, setAchievedTeamRevenue] = useState(0);
+  const [achievedByProfileMargin, setAchievedByProfileMargin] = useState<Record<string, number>>({});
+  const [achievedByProfileRevenue, setAchievedByProfileRevenue] = useState<Record<string, number>>({});
 
   // Calculate dynamic period options - only show periods that have targets
   const availablePeriods = React.useMemo(() => {
@@ -102,6 +109,124 @@ function SalesTarget() {
     }
   }, [selectedPeriod]);
 
+  // Compute actuals (achieved revenue and margin) for selected period and team
+  React.useEffect(() => {
+    const computeActuals = async () => {
+      if (!selectedPeriod || accountManagers.length === 0) {
+        setAchievedTeamMargin(0);
+        setAchievedTeamRevenue(0);
+        setAchievedByProfileMargin({});
+        setAchievedByProfileRevenue({});
+        return;
+      }
+
+      const { start, end } = getQuarterRange(selectedPeriod);
+      if (!start || !end) return;
+
+      try {
+        const amIds = accountManagers.map((am) => am.id);
+        const { data: profiles } = await supabase
+          .from("user_profiles")
+          .select("id, user_id")
+          .in("id", amIds);
+
+        const profileToUser = new Map<string, string>();
+        (profiles || []).forEach((p: any) => {
+          if (p.id && p.user_id) profileToUser.set(p.id, p.user_id);
+        });
+
+        const ownerUserIds = Array.from(profileToUser.values());
+        if (ownerUserIds.length === 0) {
+          setAchievedTeamMargin(0);
+          setAchievedTeamRevenue(0);
+          setAchievedByProfileMargin({});
+          setAchievedByProfileRevenue({});
+          return;
+        }
+
+        const { data: opps } = await supabase
+          .from("opportunities")
+          .select("id, owner_id, amount, is_won, status, expected_close_date")
+          .in("owner_id", ownerUserIds)
+          .eq("is_won", true)
+          .neq("status", "archived")
+          .gte("expected_close_date", start)
+          .lte("expected_close_date", end);
+
+        const wonOpps = (opps || []) as any[];
+        const oppIds = wonOpps.map((o) => o.id);
+
+        const revenueByOwner: Record<string, number> = {};
+        let totalRevenue = 0;
+        wonOpps.forEach((o) => {
+          const amt = Number(o.amount) || 0;
+          totalRevenue += amt;
+          const owner = o.owner_id;
+          revenueByOwner[owner] = (revenueByOwner[owner] || 0) + amt;
+        });
+
+        let costsByOpp: Record<string, number> = {};
+        if (oppIds.length > 0) {
+          const { data: items } = await supabase
+            .from("pipeline_items")
+            .select("opportunity_id, cost_of_goods, service_costs, other_expenses")
+            .in("opportunity_id", oppIds);
+
+          (items || []).forEach((it: any) => {
+            const cogs = Number(it.cost_of_goods) || 0;
+            const svc = Number(it.service_costs) || 0;
+            const other = Number(it.other_expenses) || 0;
+            const total = cogs + svc + other;
+            costsByOpp[it.opportunity_id] =
+              (costsByOpp[it.opportunity_id] || 0) + total;
+          });
+        }
+
+        const marginByOwner: Record<string, number> = {};
+        let totalMargin = 0;
+        wonOpps.forEach((o) => {
+          const amt = Number(o.amount) || 0;
+          const cost = costsByOpp[o.id] || 0;
+          const margin = Math.max(0, amt - cost);
+          totalMargin += margin;
+          const owner = o.owner_id;
+          marginByOwner[owner] = (marginByOwner[owner] || 0) + margin;
+        });
+
+        const userToProfile = new Map<string, string>();
+        (profiles || []).forEach((p: any) => {
+          if (p.id && p.user_id) userToProfile.set(p.user_id, p.id);
+        });
+
+        const achievedByProfileRevenue: Record<string, number> = {};
+        const achievedByProfileMargin: Record<string, number> = {};
+
+        Object.entries(revenueByOwner).forEach(([userId, rev]) => {
+          const profileId = userToProfile.get(userId);
+          if (profileId) achievedByProfileRevenue[profileId] = rev;
+        });
+
+        Object.entries(marginByOwner).forEach(([userId, mar]) => {
+          const profileId = userToProfile.get(userId);
+          if (profileId) achievedByProfileMargin[profileId] = mar;
+        });
+
+        setAchievedTeamRevenue(totalRevenue);
+        setAchievedTeamMargin(totalMargin);
+        setAchievedByProfileRevenue(achievedByProfileRevenue);
+        setAchievedByProfileMargin(achievedByProfileMargin);
+      } catch (e) {
+        console.error("Error computing actuals:", e);
+        setAchievedTeamRevenue(0);
+        setAchievedTeamMargin(0);
+        setAchievedByProfileRevenue({});
+        setAchievedByProfileMargin({});
+      }
+    };
+
+    computeActuals();
+  }, [selectedPeriod, accountManagers]);
+
   // Calculate department metrics from real data (Margin Target)
   const departmentMetrics = React.useMemo(() => {
     if (!targets || targets.length === 0) {
@@ -120,16 +245,15 @@ function SalesTarget() {
       (sum, target) => sum + Number(target.amount),
       0
     );
-    // For now, using zero achieved data - this could come from deals/pipeline data
-    const achieved = 0; // Would calculate from actual sales data
-    const gap = totalTarget - achieved;
+    const achieved = achievedTeamMargin || 0;
+    const gap = Math.max(0, totalTarget - achieved);
 
     return {
       target: totalTarget,
       achieved: achieved,
       gap: gap,
     };
-  }, [targets]);
+  }, [targets, achievedTeamMargin]);
 
   // Calculate department metrics from real data (Margin Target)
   const departmentMetricsRevenue = React.useMemo(() => {
@@ -149,51 +273,36 @@ function SalesTarget() {
       (sum, target) => sum + Number(target.amount),
       0
     );
-    // For now, using zero achieved data - this could come from deals/pipeline data
-    const achieved = 0; // Would calculate from actual sales data
-    const gap = totalTarget - achieved;
+    const achieved = achievedTeamRevenue || 0;
+    const gap = Math.max(0, totalTarget - achieved);
 
     return {
       target: totalTarget,
       achieved: achieved,
       gap: gap,
     };
-  }, [targets]);
+  }, [targets, achievedTeamRevenue]);
 
   // Transform targets data for team performance chart (hierarchical)
   const amPerformanceData = React.useMemo(() => {
-    if (!targets || targets.length === 0) return [];
+    if (!accountManagers || accountManagers.length === 0) return [];
 
-    const targetsByAM = targets.reduce((acc, target) => {
-      const member = target.account_manager || target.assigned_user;
-      const name = member?.full_name || "Unknown";
-      const role = member?.role || "account_manager";
-      const roleLabel =
-        role === "manager" ? "MGR" : role === "head" ? "HEAD" : "AM";
-      const displayName = `${name} (${roleLabel})`;
-
-      if (!acc[displayName]) {
-        acc[displayName] = { value: 0, role };
-      }
-      acc[displayName].value += Number(target.amount);
-      return acc;
-    }, {} as Record<string, { value: number; role: string }>);
-
-    // Sort by role hierarchy (head > manager > account_manager)
     const roleOrder = { head: 0, manager: 1, account_manager: 2 };
-    return Object.entries(targetsByAM)
-      .map(([name, data]) => ({
-        name,
-        value: 0, // Would calculate from actual sales data
-        role: data.role,
-      }))
-      .sort((a, b) => {
-        const roleCompare =
-          (roleOrder[a.role as keyof typeof roleOrder] || 3) -
-          (roleOrder[b.role as keyof typeof roleOrder] || 3);
-        return roleCompare !== 0 ? roleCompare : b.value - a.value;
-      });
-  }, [targets]);
+    const data = accountManagers.map((am) => {
+      const role = am.role || "account_manager";
+      const roleLabel = role === "manager" ? "MGR" : role === "head" ? "HEAD" : "AM";
+      const displayName = `${am.full_name} (${roleLabel})`;
+      const value = achievedByProfileRevenue[am.id] ?? 0;
+      return { name: displayName, value, role };
+    });
+
+    return data.sort((a, b) => {
+      const roleCompare = (roleOrder[a.role as keyof typeof roleOrder] || 3) -
+        (roleOrder[b.role as keyof typeof roleOrder] || 3);
+      if (roleCompare !== 0) return roleCompare;
+      return b.value - a.value;
+    });
+  }, [accountManagers, achievedByProfileRevenue]);
 
   // Calculate attainment percentage from real data
   const attainmentData = React.useMemo(() => {
@@ -224,6 +333,22 @@ function SalesTarget() {
     }).format(value);
   };
 
+  // Helper: get quarter start/end (YYYY-MM-DD) from period label like "Q3 2025"
+  const getQuarterRange = (period: string) => {
+    const m = period.match(/Q([1-4])\s+(\d{4})/);
+    if (!m) return { start: "", end: "" };
+    const q = parseInt(m[1], 10);
+    const year = parseInt(m[2], 10);
+    const startIdx = (q - 1) * 3; // 0-based index
+    const start = new Date(year, startIdx, 1);
+    const end = new Date(year, startIdx + 3, 0);
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`;
+    return { start: fmt(start), end: fmt(end) };
+  };
+
   const amTableDataMegrinCal = React.useMemo(() => {
     const roleOrder = { head: 0, manager: 1, account_manager: 2 };
 
@@ -237,7 +362,7 @@ function SalesTarget() {
       achieved: 0,
       gap: 0,
       status: "No Target",
-      measure: "revenue",
+      measure: "margin",
     }));
 
     // Jika tidak ada target, langsung return sorted members
@@ -297,14 +422,12 @@ function SalesTarget() {
       const quarterlyAmount = amount / Math.max(Math.ceil(safeMonths / 3), 1);
 
       // Hitung pencapaian
-      const achieved = Number.isFinite(Number(target.achieved))
-        ? Number(target.achieved)
-        : 0; // Would calculate from actual sales data
+      const achieved = achievedByProfileMargin[memberId] ?? 0;
 
       const current = acc[memberId];
       current.monthlyTarget += monthlyAmount;
       current.quarterlyTarget += quarterlyAmount;
-      current.achieved += achieved;
+      current.achieved = achieved;
 
       return acc;
     }, {} as Record<string, any>);
@@ -408,14 +531,12 @@ function SalesTarget() {
       const quarterlyAmount = amount / Math.max(Math.ceil(safeMonths / 3), 1);
 
       // Hitung pencapaian
-      const achieved = Number.isFinite(Number(target.achieved))
-        ? Number(target.achieved)
-        : 0; // Would calculate from actual sales data
+      const achieved = achievedByProfileRevenue[memberId] ?? 0;
 
       const current = acc[memberId];
       current.monthlyTarget += monthlyAmount;
       current.quarterlyTarget += quarterlyAmount;
-      current.achieved += achieved;
+      current.achieved = achieved;
 
       return acc;
     }, {} as Record<string, any>);

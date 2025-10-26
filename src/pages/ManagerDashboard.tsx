@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useProfile } from "@/hooks/useProfile";
@@ -61,14 +61,46 @@ export default function ManagerDashboard() {
   };
 
   // Sales performance data for charts
-  const salesPerformanceData = [
-    { month: 'Jan', opportunities: 45, deals: 12, revenue: 1200000 },
-    { month: 'Feb', opportunities: 52, deals: 15, revenue: 1450000 },
-    { month: 'Mar', opportunities: 48, deals: 18, revenue: 1680000 },
-    { month: 'Apr', opportunities: 61, deals: 22, revenue: 2100000 },
-    { month: 'May', opportunities: 55, deals: 19, revenue: 1890000 },
-    { month: 'Jun', opportunities: 67, deals: 25, revenue: 2350000 },
-  ];
+  const salesPerformanceData = useMemo(() => {
+    const monthsBack = 6;
+    const now = new Date();
+    const monthKeys: { key: string; label: string; start: Date; end: Date }[] = [];
+
+    for (let i = monthsBack - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = new Date(d.getFullYear(), d.getMonth(), 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+      const label = d.toLocaleString('en-US', { month: 'short' });
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      monthKeys.push({ key, label, start, end });
+    }
+
+    const data = monthKeys.map(({ label, start, end }) => {
+      const inRange = (dt?: string | Date | null) => {
+        if (!dt) return false;
+        const time = new Date(dt).getTime();
+        return time >= start.getTime() && time <= end.getTime();
+      };
+
+      const monthOpps = opportunities.filter(o => inRange(o.created_at));
+      const monthDeals = opportunities.filter(o => {
+        const isWon = (o.stage === 'Closed Won');
+        const closedOrUpdated = o.updated_at ?? o.created_at;
+        return isWon && inRange(closedOrUpdated);
+      });
+
+      const revenue = monthDeals.reduce((sum, o) => sum + (o.amount || 0), 0);
+
+      return {
+        month: label,
+        opportunities: monthOpps.length,
+        deals: monthDeals.length,
+        revenue,
+      };
+    });
+
+    return data;
+  }, [opportunities]);
 
   // Stage distribution data
   const stageDistribution = [

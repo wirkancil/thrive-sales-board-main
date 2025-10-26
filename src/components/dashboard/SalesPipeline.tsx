@@ -220,6 +220,9 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
   // Use provided deals if available, otherwise fall back to local state
   const displayDeals = propDeals || deals;
 
+  // Available reps from Supabase, filtered by user role
+  const [availableReps, setAvailableReps] = useState<{ id: string; name: string }[]>([]);
+
   const [newDeal, setNewDeal] = useState<Partial<Deal>>({
     company_name: "",
     deal_value: 0,
@@ -255,14 +258,28 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
         if (error) throw error;
 
         if (data && data.length > 0) {
-          // Map database fields to Deal interface
-          const mappedDeals: Deal[] = data.map((dbDeal: any) => ({
+          // Build a lookup map of assigned_to user IDs to full names
+          const assignedIds = Array.from(new Set((data as any[])
+            .map((d: any) => d.assigned_to)
+            .filter((id: string | null) => !!id)));
+
+          let idToName: Record<string, string> = {};
+          if (assignedIds.length > 0) {
+            const { data: repProfiles } = await (supabase as any)
+              .from('user_profiles')
+              .select('user_id, full_name')
+              .in('user_id', assignedIds);
+            idToName = Object.fromEntries(((repProfiles || []) as any[]).map((r: any) => [r.user_id, r.full_name]));
+          }
+
+          // Map database fields to Deal interface, using display names for assigned reps
+          const mappedDeals: Deal[] = (data as any[]).map((dbDeal: any) => ({
             id: dbDeal.id,
             company_name: dbDeal.company_name,
             deal_value: dbDeal.deal_value,
             contact_person: dbDeal.contact_person,
             contact_avatar: "/placeholder.svg", // Default avatar
-            assigned_rep: dbDeal.assigned_to || "Unknown",
+            assigned_rep: idToName[dbDeal.assigned_to] || "Unknown",
             stage: dbDeal.stage as PipelineStage,
             status: dbDeal.status as DealStatus,
             created_at: dbDeal.created_at,
@@ -288,7 +305,46 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
     loadDeals();
   }, [user, toast]);
 
-  // Get unique reps for filtering
+  // Fetch available reps for the Assigned Rep select based on user role
+  useEffect(() => {
+    const fetchAvailableReps = async () => {
+      try {
+        if (!propUserProfile) return;
+
+        // Account managers: only themselves
+        if (propUserProfile.role === 'account_manager') {
+          if (user) {
+            setAvailableReps([{ id: user.id, name: propUserProfile.full_name || 'Me' }]);
+          }
+          return;
+        }
+
+        // Heads/managers/admins - fetch scoped users
+        let query: any = (supabase as any)
+          .from('user_profiles')
+          .select('user_id, full_name, division_id, department_id');
+
+        if (propUserProfile.role === 'head' && propUserProfile.division_id) {
+          query = query.eq('division_id', propUserProfile.division_id);
+        } else if (propUserProfile.role === 'manager' && propUserProfile.department_id) {
+          query = query.eq('department_id', propUserProfile.department_id);
+        }
+        // Admins see all users
+
+        const { data, error } = await query.order('full_name');
+        if (error) throw error;
+
+        setAvailableReps(((data || []) as any[]).map((u: any) => ({ id: u.user_id, name: u.full_name })));
+      } catch (err) {
+        console.error('Error fetching available reps:', err);
+        setAvailableReps([]);
+      }
+    };
+
+    fetchAvailableReps();
+  }, [propUserProfile, user]);
+
+  // Get unique reps for filtering (uses display names)
   const uniqueReps = Array.from(new Set(deals.map(deal => deal.assigned_rep)));
 
   // Filter deals based on search and filters
@@ -392,7 +448,7 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
         company_name: newDeal.company_name!,
         deal_value: newDeal.deal_value || 0,
         contact_person: newDeal.contact_person!,
-        assigned_to: newDeal.assigned_rep!,
+        assigned_to: newDeal.assigned_rep!, // store user_id
         stage: newDeal.stage || "Lead",
         status: newDeal.status || "Warm",
         user_id: user.id,
@@ -407,14 +463,14 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
 
       if (error) throw error;
 
-      // Map the returned data to Deal interface
+      // Map the returned data to Deal interface, showing full_name for assigned rep
       const newDealWithId: Deal = {
         id: (data as any).id,
         company_name: (data as any).company_name,
         deal_value: (data as any).deal_value,
         contact_person: (data as any).contact_person,
         contact_avatar: "/placeholder.svg",
-        assigned_rep: (data as any).assigned_to,
+        assigned_rep: availableReps.find(r => r.id === (data as any).assigned_to)?.name || "Unknown",
         stage: (data as any).stage as PipelineStage,
         status: (data as any).status as DealStatus,
         created_at: (data as any).created_at,
@@ -514,13 +570,17 @@ export function SalesPipeline({ deals: propDeals, userProfile: propUserProfile, 
                     value={newDeal.assigned_rep || ""} 
                     onValueChange={(value) => setNewDeal({ ...newDeal, assigned_rep: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="assigned-rep">
                       <SelectValue placeholder="Select rep" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="John Smith">John Smith</SelectItem>
-                      <SelectItem value="Alice Brown">Alice Brown</SelectItem>
-                      <SelectItem value="Bob Wilson">Bob Wilson</SelectItem>
+                      {availableReps.length === 0 ? (
+                        <SelectItem value="" disabled>No reps available</SelectItem>
+                      ) : (
+                        availableReps.map((rep) => (
+                          <SelectItem key={rep.id} value={rep.id}>{rep.name}</SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

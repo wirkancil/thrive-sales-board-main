@@ -83,17 +83,15 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
       const endDateTime = new Date(eventDateTime);
       endDateTime.setHours(eventDateTime.getHours() + 1); // Default 1 hour duration
 
-      const { error } = await supabase
-        .from('activities')
+      const { error } = await (supabase as any)
+        .from('sales_activities')
         .insert([
           {
             subject: formData.title.trim(),
-            starts_at: eventDateTime.toISOString(),
-            ends_at: endDateTime.toISOString(),
-            location: formData.location.trim() || null,
+            scheduled_at: eventDateTime.toISOString(),
             description: formData.description.trim() || null,
-            type: 'meeting',
-            status: 'open',
+            activity_type: 'meeting',
+            status: 'scheduled',
             created_by: user.id,
           },
         ]);

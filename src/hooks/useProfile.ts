@@ -5,6 +5,7 @@ import { useAuth } from './useAuth';
 
 export interface UserProfile {
   id: string;
+  user_id?: string; // auth uid reference (optional for mock/admin)
   full_name: string | null;
   role: 'account_manager' | 'manager' | 'head' | 'admin';
   department: string | null;
@@ -49,7 +50,7 @@ export const useProfile = () => {
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('id', currentUser.id)
+        .eq('user_id', currentUser.id)
         .maybeSingle();
 
       // Jika tidak ada row, buat profil default
@@ -58,29 +59,107 @@ export const useProfile = () => {
       }
 
       if (!data) {
-        const { data: newProfile, error: createError } = await supabase
-          .from('user_profiles')
-          .insert({
+        // Check admin by ID or email allowlist
+        const adminEmailsEnv = (import.meta as any).env?.VITE_ADMIN_EMAILS as string | undefined;
+        const adminEmailList = (adminEmailsEnv || 'admin@gmail.com,hidayat.suli@gmail.com')
+          .split(',')
+          .map((e: string) => e.trim().toLowerCase())
+          .filter(Boolean);
+        const currentEmail = (currentUser.email || '').toLowerCase();
+
+        const isAdminUser = currentUser.id === '3212a172-b6c8-417c-811a-735cc0033041' ||
+          (currentEmail && adminEmailList.includes(currentEmail));
+        
+        if (isAdminUser) {
+          // Try to bootstrap admin profile on the server (security definer)
+          try {
+            await supabase.rpc('ensure_admin_profile');
+            const { data: createdProfile } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .maybeSingle();
+            if (createdProfile) {
+              setProfile(createdProfile as any);
+              setTitleName(null);
+              setRegionName(null);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.warn('ensure_admin_profile failed, using local mock profile');
+          }
+
+          // Fallback: local mock admin profile without DB insert
+          const adminProfile: UserProfile = {
             id: currentUser.id,
-            full_name: (currentUser as any)?.user_metadata?.full_name || currentUser.email || 'Unknown User',
-            role: 'account_manager',
+            user_id: currentUser.id,
+            full_name: 'System Administrator',
+            role: 'admin',
+            department: null,
+            created_at: new Date().toISOString(),
+            preferences: null,
+            division_id: null,
+            department_id: null,
+            team_id: null,
             is_active: true,
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          throw createError;
+            title_id: null,
+            region_id: null,
+            region_code: null,
+            currency_code: 'USD',
+            locale: 'en-US',
+            timezone: 'UTC',
+            fiscal_calendar_id: null,
+            external_id: null,
+            tenant_id: null,
+            user_status: 'active',
+            is_deleted: false,
+            deleted_at: null,
+            deleted_by: null,
+            updated_at: null,
+            entity_id: null,
+          };
+          setProfile(adminProfile);
+          setTitleName(null);
+          setRegionName(null);
+        } else {
+          // Non-admin: biarkan error agar UI menampilkan pesan yang sesuai
+          setError('User profile not found');
         }
-
-        setProfile(newProfile as any);
+      } else {
+        // Data exists: load profile
+        setProfile(data as any);
         setTitleName(null);
         setRegionName(null);
-        return;
+
+        // If this user is allowlisted admin but role isn't admin, promote via RPC
+        try {
+          const adminEmailsEnv = (import.meta as any).env?.VITE_ADMIN_EMAILS as string | undefined;
+          const adminEmailList = (adminEmailsEnv || 'admin@gmail.com,hidayat.suli@gmail.com')
+            .split(',')
+            .map((e: string) => e.trim().toLowerCase())
+            .filter(Boolean);
+          const currentEmail = (currentUser.email || '').toLowerCase();
+          const isAdminUser = currentUser.id === '3212a172-b6c8-417c-811a-735cc0033041' ||
+            (currentEmail && adminEmailList.includes(currentEmail));
+
+          if (isAdminUser && String((data as any).role) !== 'admin') {
+            await supabase.rpc('ensure_admin_profile');
+            const { data: promotedProfile } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .maybeSingle();
+            if (promotedProfile) {
+              setProfile(promotedProfile as any);
+            }
+          }
+        } catch (e) {
+          console.warn('admin promotion check failed', e);
+        }
       }
 
-      setProfile(data as any);
-      
+
       // Fetch title and region names if available
       if (data?.title_id) {
         const { data: titleData } = await supabase
@@ -105,7 +184,42 @@ export const useProfile = () => {
       }
     } catch (err: any) {
       console.error('Error fetching profile:', err);
-      setError(err.message);
+      // Fallback: if this is the special admin user, provide mock admin profile even on error
+      if (user && user.id === '3212a172-b6c8-417c-811a-735cc0033041') {
+        const adminProfile: UserProfile = {
+          id: user.id,
+          user_id: user.id,
+          full_name: 'System Administrator',
+          role: 'admin',
+          department: null,
+          created_at: new Date().toISOString(),
+          preferences: null,
+          division_id: null,
+          department_id: null,
+          team_id: null,
+          is_active: true,
+          title_id: null,
+          region_id: null,
+          region_code: null,
+          currency_code: 'USD',
+          locale: 'en-US',
+          timezone: 'UTC',
+          fiscal_calendar_id: null,
+          external_id: null,
+          tenant_id: null,
+          user_status: 'active',
+          is_deleted: false,
+          deleted_at: null,
+          deleted_by: null,
+          updated_at: null,
+          entity_id: null,
+        };
+        setProfile(adminProfile);
+        setTitleName(null);
+        setRegionName(null);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -115,10 +229,11 @@ export const useProfile = () => {
     if (!user || !profile) return { error: 'No user or profile found' };
 
     try {
+      // @ts-expect-error Supabase generic types can cause deep instantiation errors here
       const { data, error } = await supabase
         .from('user_profiles')
-        .update(updates)
-        .eq('id', user.id)
+        .update(updates as any)
+        .eq('user_id', user.id)
         .select()
         .single();
 

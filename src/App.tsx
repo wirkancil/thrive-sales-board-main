@@ -265,7 +265,7 @@ const App = () => (
             <ProtectedRoute>
               <RoleBasedRoute allowedRoles={['admin']}>
                 <CRMLayout>
-                  <AdminDashboard />
+                  <Admin />
                 </CRMLayout>
               </RoleBasedRoute>
             </ProtectedRoute>

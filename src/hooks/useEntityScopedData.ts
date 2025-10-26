@@ -31,24 +31,99 @@ export const useEntityScopedData = () => {
   const fetchEntityScopedOpportunities = async () => {
     try {
       const { data, error } = await supabase.rpc('get_entity_scoped_opportunities');
-      
-      if (error) throw error;
+      if (error) throw error as any;
       setOpportunities(data || []);
     } catch (err: any) {
       console.error('Error fetching entity-scoped opportunities:', err);
-      setError(err.message);
+      // Fallback if RPC is missing (PGRST202) or not registered yet
+      if (err?.code === 'PGRST202' || (typeof err?.message === 'string' && err.message.includes('Could not find the function'))) {
+        try {
+          const currentUser = (await supabase.auth.getUser()).data.user;
+          if (!currentUser) {
+            setOpportunities([]);
+            return;
+          }
+          let query = supabase
+            .from('opportunities')
+            .select('id, name, amount, stage, owner_id, customer_id, created_at');
+
+          if (profile?.role === 'account_manager') {
+            query = query.eq('owner_id', currentUser.id);
+          } else if (profile?.role === 'manager' && profile?.department_id) {
+            const { data: owners } = await supabase
+              .from('user_profiles')
+              .select('user_id')
+              .eq('department_id', profile.department_id);
+            const ownerIds = (owners || []).map((o: any) => o.user_id).filter(Boolean);
+            if (ownerIds.length > 0) {
+              query = query.in('owner_id', ownerIds);
+            } else {
+              // Ensure empty result if no owners found in scope
+              query = query.eq('owner_id', '00000000-0000-0000-0000-000000000000');
+            }
+          } else if (profile?.role === 'head' && profile?.division_id) {
+            const { data: owners } = await supabase
+              .from('user_profiles')
+              .select('user_id')
+              .eq('division_id', profile.division_id);
+            const ownerIds = (owners || []).map((o: any) => o.user_id).filter(Boolean);
+            if (ownerIds.length > 0) {
+              query = query.in('owner_id', ownerIds);
+            }
+          } // admins see all by default
+
+          const { data: oppData, error: oppError } = await query;
+          if (oppError) throw oppError;
+          setOpportunities((oppData || []) as any);
+        } catch (fallbackErr: any) {
+          console.error('Fallback opportunities query failed:', fallbackErr);
+          setError(fallbackErr?.message || 'Failed to load opportunities');
+        }
+      } else {
+        setError(err.message);
+      }
     }
   };
 
   const fetchEntityScopedTargets = async () => {
     try {
       const { data, error } = await supabase.rpc('get_entity_scoped_targets');
-      
-      if (error) throw error;
+      if (error) throw error as any;
       setTargets(data || []);
     } catch (err: any) {
       console.error('Error fetching entity-scoped targets:', err);
-      setError(err.message);
+      if (err?.code === 'PGRST202' || (typeof err?.message === 'string' && err.message.includes('Could not find the function'))) {
+        try {
+          let query = supabase
+            .from('sales_targets')
+            .select('id, assigned_to, amount, period_start, period_end, measure, division_id, department_id');
+
+          if (profile?.role === 'account_manager' && profile?.id) {
+            query = query.eq('assigned_to', profile.id);
+          } else if (profile?.role === 'manager' && profile?.department_id) {
+            query = query.eq('department_id', profile.department_id);
+          } else if (profile?.role === 'head' && profile?.division_id) {
+            query = query.eq('division_id', profile.division_id);
+          } // admins see all by default
+
+          const { data: targetData, error: targetError } = await query;
+          if (targetError) throw targetError;
+          // Strip extra fields if present
+          setTargets((targetData || []).map((t: any) => ({
+            id: t.id,
+            assigned_to: t.assigned_to,
+            amount: t.amount || 0,
+            period_start: t.period_start,
+            period_end: t.period_end,
+            measure: t.measure,
+          })));
+        } catch (fallbackErr: any) {
+          console.error('Fallback targets query failed:', fallbackErr);
+          setError(fallbackErr?.message || 'Failed to load targets');
+        }
+      } else {
+        setError(err.message);
+      }
     }
   };
 
@@ -71,11 +146,9 @@ export const useEntityScopedData = () => {
   const getOpportunityStats = () => {
     const totalValue = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
     const stageBreakdown: Record<string, number> = {};
-    
     opportunities.forEach(opp => {
       stageBreakdown[opp.stage] = (stageBreakdown[opp.stage] || 0) + 1;
     });
-
     return {
       total: opportunities.length,
       totalValue,
@@ -94,7 +167,6 @@ export const useEntityScopedData = () => {
       const end = new Date(target.period_end);
       return start <= now && now <= end;
     });
-
     return {
       total: targets.length,
       totalValue: totalTargetValue,
@@ -105,7 +177,6 @@ export const useEntityScopedData = () => {
 
   const getEntityScope = () => {
     if (!profile) return 'loading';
-    
     switch (profile.role) {
       case 'admin':
         return 'global';

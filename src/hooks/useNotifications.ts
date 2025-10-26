@@ -75,28 +75,33 @@ export const useNotifications = () => {
     }
   };
 
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates (guarded by env to avoid WebSocket errors)
   useEffect(() => {
     if (!user) return;
 
     fetchNotifications();
 
-    const channel = supabase
-      .channel('notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        const newNotification = payload.new as Notification;
-        setNotifications(prev => [newNotification, ...prev.slice(0, 9)]);
-        setUnreadCount(prev => prev + 1);
-      })
-      .subscribe();
+    const realtimeEnabled = import.meta.env.VITE_SUPABASE_REALTIME_ENABLED === 'true';
+    let channel: any = null;
+
+    if (realtimeEnabled) {
+      channel = supabase
+        .channel('notifications')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
+        }, (payload) => {
+          const newNotification = payload.new as Notification;
+          setNotifications(prev => [newNotification, ...prev.slice(0, 9)]);
+          setUnreadCount(prev => prev + 1);
+        })
+        .subscribe();
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [user]);
 

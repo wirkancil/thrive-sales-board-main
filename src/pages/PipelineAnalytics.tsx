@@ -78,7 +78,6 @@ export default function PipelineAnalytics() {
         let opportunitiesQuery = supabase
           .from('opportunities')
           .select('*')
-          .eq('is_active', true)
           .gte('created_at', startDate.toISOString());
 
         // Apply role-based filtering

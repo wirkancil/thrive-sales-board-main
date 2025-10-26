@@ -41,6 +41,30 @@ export default function ManagerPipeline() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [reloadCount, setReloadCount] = useState(0);
+  const [quarterTarget, setQuarterTarget] = useState<number>(0);
+
+  // Helper: build start/end date range based on selectedPeriod (Q/M/Y)
+  const getPeriodRange = () => {
+    const now = new Date();
+    if (selectedPeriod === "Q") {
+      const quarter = Math.floor(now.getMonth() / 3); // 0..3
+      const start = new Date(now.getFullYear(), quarter * 3, 1);
+      const end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+      const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return { start: fmt(start), end: fmt(end) };
+    }
+    if (selectedPeriod === "M") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return { start: fmt(start), end: fmt(end) };
+    }
+    // Year
+    const start = new Date(now.getFullYear(), 0, 1);
+    const end = new Date(now.getFullYear(), 12, 0);
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return { start: fmt(start), end: fmt(end) };
+  };
 
   // Update URL params when filters change
   useEffect(() => {
@@ -62,17 +86,21 @@ export default function ManagerPipeline() {
         let query = supabase
           .from('opportunities')
           .select('*')
-          .eq('is_active', true);
+          .neq('status', 'archived');
 
         // Apply role-based filtering - managers see team opportunities
-        const { data: teamData } = await supabase
-          .from('manager_team_members')
-          .select('account_manager_id')
-          .eq('manager_id', profile.id);
-
-        if (teamData && teamData.length > 0) {
-          const teamIds = teamData.map(m => m.account_manager_id);
-          query = query.in('owner_id', teamIds);
+        const teamUserIds = teamMembers.map(m => m.user_id).filter(Boolean);
+        if (teamUserIds.length > 0) {
+          query = query.in('owner_id', teamUserIds);
+        } else if (profile.department_id) {
+          const { data: deptUsers } = await supabase
+            .from('user_profiles')
+            .select('user_id')
+            .eq('department_id', profile.department_id);
+          const deptUserIds = (deptUsers || []).map((u: any) => u.user_id).filter(Boolean);
+          if (deptUserIds.length > 0) {
+            query = query.in('owner_id', deptUserIds);
+          }
         }
 
         // Apply account manager filter
@@ -83,6 +111,12 @@ export default function ManagerPipeline() {
         // Apply forecast category filter
         if (selectedForecastCategory !== 'all') {
           query = query.eq('forecast_category', selectedForecastCategory as any);
+        }
+
+        // Apply period range on expected_close_date
+        const { start, end } = getPeriodRange();
+        if (start && end) {
+          query = query.gte('expected_close_date', start).lte('expected_close_date', end);
         }
 
         const { data, error } = await query.order('created_at', { ascending: false });
@@ -112,7 +146,80 @@ export default function ManagerPipeline() {
     };
 
     fetchOpportunities();
-  }, [profile, selectedAccountManager, selectedForecastCategory, reloadCount]);
+  }, [profile, teamMembers, selectedAccountManager, selectedForecastCategory, selectedPeriod, reloadCount]);
+
+  // Fetch quarterly/monthly/year target for current filters
+  useEffect(() => {
+    const fetchTarget = async () => {
+      if (!profile) return;
+      try {
+        const { start, end } = getPeriodRange();
+
+        // Determine assigned_to profile IDs to include
+        let assignedProfileIds: string[] = [];
+        if (selectedAccountManager !== 'all') {
+          const { data: single } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('user_id', selectedAccountManager)
+            .maybeSingle();
+          if (single?.id) assignedProfileIds = [single.id];
+        } else if (profile.department_id) {
+          const { data: deptProfiles } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('department_id', profile.department_id);
+          assignedProfileIds = (deptProfiles || []).map((p: any) => p.id).filter(Boolean);
+        }
+
+        if (assignedProfileIds.length === 0) {
+          setQuarterTarget(0);
+          return;
+        }
+
+        let targetQuery = supabase
+          .from('sales_targets')
+          .select('assigned_to, amount, measure, period_start, period_end')
+          .in('assigned_to', assignedProfileIds)
+          .eq('measure', 'revenue')
+          .lte('period_start', end)
+          .gte('period_end', start);
+
+        const { data: targets, error } = await targetQuery;
+        if (error) throw error;
+
+        // Sum contribution within selected period window
+        const parseDate = (s: string) => new Date(s + 'T00:00:00');
+        const diffMonthsInclusive = (a: Date, b: Date) => {
+          return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+        };
+
+        const startDate = parseDate(start);
+        const endDate = parseDate(end);
+
+        const totalTarget = (targets || []).reduce((sum: number, t: any) => {
+          const tStart = parseDate(t.period_start);
+          const tEnd = parseDate(t.period_end);
+          const totalMonths = Math.max(diffMonthsInclusive(tStart, tEnd), 1);
+
+          // overlap range
+          const oStart = new Date(Math.max(tStart.getTime(), startDate.getTime()));
+          const oEnd = new Date(Math.min(tEnd.getTime(), endDate.getTime()));
+          if (oEnd < oStart) return sum;
+          const overlapMonths = Math.max(diffMonthsInclusive(oStart, oEnd), 0);
+          const contribution = (Number(t.amount) || 0) * (overlapMonths / totalMonths);
+          return sum + contribution;
+        }, 0);
+
+        setQuarterTarget(totalTarget);
+      } catch (err) {
+        console.error('Error fetching target:', err);
+        setQuarterTarget(0);
+      }
+    };
+
+    fetchTarget();
+  }, [profile, selectedAccountManager, selectedPeriod, teamMembers]);
 
   // Team options (locked to current manager)
   const teamOptions = [
@@ -130,7 +237,7 @@ export default function ManagerPipeline() {
   const accountManagerOptions = [
     { value: "all", label: "All Reps" },
     ...teamMembers.map(member => ({
-      value: member.id,
+      value: member.user_id,
       label: member.full_name
     }))
   ];
@@ -150,7 +257,7 @@ export default function ManagerPipeline() {
     const weightedPipeline = opportunities.reduce((sum, opp) => sum + opp.amount * (opp.probability || 0) / 100, 0);
     const commitQ = opportunities.filter(opp => opp.forecast_category === 'Commit').reduce((sum, opp) => sum + opp.amount, 0);
     const bestQ = opportunities.filter(opp => opp.forecast_category === 'Best Case').reduce((sum, opp) => sum + opp.amount, 0);
-    const gapToTarget = 5000000 - commitQ; // Mock target of 5M
+    const gapToTarget = Math.max(0, quarterTarget - commitQ);
 
     return {
       weightedPipeline,

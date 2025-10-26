@@ -81,9 +81,9 @@ export const RoleAssignmentPanel = () => {
   const handleSave = async (user: any) => {
     console.log('🔄 Starting handleSave for user:', user);
     
-    const targetRole = draftRoles[user.id];
-    const selectedDivision = selectedDivisions[user.id];
-    const selectedDepartment = selectedDepartments[user.id];
+    const targetRole = roleDraft[user.id] || user.role;
+    const selectedDivision = assignments[user.id]?.divisionId ?? null;
+    const selectedDepartment = assignments[user.id]?.departmentId ?? null;
 
     console.log('📋 Role approval data:', {
       userId: user.id,
@@ -97,36 +97,24 @@ export const RoleAssignmentPanel = () => {
 
     if (!targetRole) {
       console.error('❌ No target role selected');
-      toast({
-        title: "Error",
-        description: "Please select a role first",
-        variant: "destructive",
-      });
+      toast.error('Please select a role first');
       return;
     }
 
     // Validate role requirements
     if (targetRole === 'head' && !selectedDivision) {
       console.error('❌ Head role requires division');
-      toast({
-        title: "Error", 
-        description: "Head role requires a division selection",
-        variant: "destructive",
-      });
+      toast.error('Head role requires a division selection');
       return;
     }
 
     if ((targetRole === 'manager' || targetRole === 'account_manager') && !selectedDepartment) {
       console.error('❌ Manager/Account Manager role requires department');
-      toast({
-        title: "Error",
-        description: "Manager and Account Manager roles require a department selection", 
-        variant: "destructive",
-      });
+      toast.error('Manager and Account Manager roles require a department selection');
       return;
     }
 
-    setUpdatingUsers(prev => ({ ...prev, [user.id]: true }));
+    setUpdating(user.id);
     console.log('🔄 Set updating status for user:', user.id);
 
     try {
@@ -142,10 +130,7 @@ export const RoleAssignmentPanel = () => {
 
       if (result.success) {
         console.log('🎉 Profile update successful, showing success toast');
-        toast({
-          title: "Success",
-          description: `User role updated to ${targetRole} successfully`,
-        });
+        toast.success(`User role updated to ${targetRole} successfully`);
 
         console.log('⏳ Waiting 500ms before refreshing data...');
         // Wait a bit for database consistency
@@ -159,14 +144,10 @@ export const RoleAssignmentPanel = () => {
       }
     } catch (error: any) {
       console.error('💥 Error in handleSave:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update user role",
-        variant: "destructive",
-      });
+      toast.error(error.message || 'Failed to update user role');
     } finally {
       console.log('🏁 Clearing updating status for user:', user.id);
-      setUpdatingUsers(prev => ({ ...prev, [user.id]: false }));
+      setUpdating(null);
     }
   };
 

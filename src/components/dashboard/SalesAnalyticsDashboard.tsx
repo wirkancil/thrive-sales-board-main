@@ -87,24 +87,60 @@ export function SalesAnalyticsDashboard() {
 
       // Load activities
       const { data: activitiesData, error: activitiesError } = await supabase
-        .from('sales_activity')
+        .from('sales_activity_v2')
         .select('*')
-        .eq('user_id', user.id)
-        .gte('activity_time', format(dateRange.start, 'yyyy-MM-dd'))
-        .lte('activity_time', format(dateRange.end, 'yyyy-MM-dd'));
+        .eq('created_by', user.id)
+        .gte('scheduled_at', format(dateRange.start, 'yyyy-MM-dd'))
+        .lte('scheduled_at', format(dateRange.end, 'yyyy-MM-dd'));
 
-      if (activitiesError) throw activitiesError;
+      // Fallback if v2 relation is missing
+      if (activitiesError && (activitiesError.code === '42P01' || (activitiesError.message || '').includes('sales_activity_v2'))) {
+        const { data: legacyActivities, error: legacyError } = await supabase
+          .from('sales_activity')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('created_at', format(dateRange.start, 'yyyy-MM-dd'))
+          .lte('created_at', format(dateRange.end, 'yyyy-MM-dd'));
+        if (legacyError) throw legacyError;
 
-      setDeals(dealsData || []);
-      setActivities(activitiesData?.map(activity => ({
-        id: activity.id,
-        customer_name: activity.customer_name,
-        activity_type: activity.activity_type,
-        date: new Date(activity.activity_time).toLocaleDateString(),
-        time: new Date(activity.activity_time).toLocaleTimeString(),
-        notes: activity.notes || 'No notes',
-        created_at: activity.created_at
-      })) || []);
+        setDeals(dealsData || []);
+        setActivities(
+          (legacyActivities || []).map((activity: any) => ({
+            id: activity.id,
+            customer_name: activity.customer_name || '-',
+            activity_type:
+              activity.activity_type?.toLowerCase() === 'meeting'
+                ? 'Meeting'
+                : activity.activity_type?.toLowerCase() === 'email'
+                  ? 'Email'
+                  : 'Call',
+            date: new Date(activity.activity_time || activity.created_at).toLocaleDateString(),
+            time: new Date(activity.activity_time || activity.created_at).toLocaleTimeString(),
+            notes: activity.notes || 'No notes',
+            created_at: activity.created_at || activity.activity_time,
+          }))
+        );
+      } else {
+        if (activitiesError) throw activitiesError;
+
+        setDeals(dealsData || []);
+        setActivities(
+          activitiesData?.map((activity: any) => ({
+            id: activity.id,
+            customer_name: activity.customer_name || '-',
+            activity_type:
+              activity.activity_type?.toLowerCase() === 'meeting'
+                ? 'Meeting'
+                : activity.activity_type?.toLowerCase() === 'email'
+                  ? 'Email'
+                  : 'Call',
+            date: new Date(activity.scheduled_at || activity.created_at).toLocaleDateString(),
+            time: new Date(activity.scheduled_at || activity.created_at).toLocaleTimeString(),
+            notes: activity.notes || 'No notes',
+            created_at: activity.created_at || activity.scheduled_at,
+          })) || []
+        );
+      }
     } catch (error) {
       console.error('Error loading analytics data:', error);
       toast({

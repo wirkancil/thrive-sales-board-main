@@ -50,7 +50,7 @@ export const ActivityTimeline = ({
   const fetchActivities = async () => {
     try {
       let query = supabase
-        .from('activities')
+        .from('sales_activity_v2')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -64,10 +64,45 @@ export const ActivityTimeline = ({
 
       const { data, error } = await query;
       
+      // Fallback when v2 relation is missing
+      if (error && (error.code === '42P01' || (error.message || '').includes('sales_activity_v2'))) {
+        let legacyQuery = supabase
+          .from('sales_activity')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (limit) {
+          legacyQuery = legacyQuery.limit(limit);
+        }
+
+        const { data: legacyData, error: legacyError } = await legacyQuery;
+        if (legacyError) throw legacyError;
+
+        setActivities((legacyData || []).map((activity: any) => ({
+          id: activity.id,
+          subject: activity.activity_type ? String(activity.activity_type).replace('_', ' ') : 'Activity',
+          description: activity.notes || null,
+          status: 'open',
+          due_at: null,
+          created_at: (activity.created_at || activity.activity_time || new Date().toISOString()),
+          updated_at: (activity.created_at || activity.activity_time || new Date().toISOString()),
+          created_by: activity.user_id,
+          opportunity_id: null,
+        })));
+        return;
+      }
+      
       if (error) throw error;
-      setActivities((data || []).map(activity => ({
-        ...activity,
-        status: activity.status as 'open' | 'completed'
+      setActivities((data || []).map((activity: any) => ({
+        id: activity.id,
+        subject: activity.activity_type ? String(activity.activity_type).replace('_', ' ') : 'Activity',
+        description: activity.notes || null,
+        status: activity.status === 'done' ? 'completed' : 'open',
+        due_at: null,
+        created_at: (activity.created_at || activity.scheduled_at || new Date().toISOString()),
+        updated_at: (activity.created_at || activity.scheduled_at || new Date().toISOString()),
+        created_by: activity.created_by,
+        opportunity_id: activity.opportunity_id
       })));
     } catch (error) {
       console.error('Error fetching activities:', error);

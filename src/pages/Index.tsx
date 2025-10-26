@@ -13,7 +13,14 @@ const Index = () => {
     if (loading) return;
 
     // Jika user terautentikasi tapi belum ada profile, arahkan ke pending approval
+    // KECUALI jika user adalah admin yang sudah ada di auth
     if (user && !profile) {
+      // Check if this is the admin user by ID
+      if (user.id === '3212a172-b6c8-417c-811a-735cc0033041') {
+        // This is the admin user, redirect to admin dashboard instead of pending
+        navigate('/admin/dashboard', { replace: true });
+        return;
+      }
       navigate('/pending', { replace: true });
       return;
     }
@@ -24,10 +31,18 @@ const Index = () => {
     // Jika profile ada, cek apakah perlu approval berdasarkan assignment org
     if (profile) {
       const roleText = String(profile.role);
+      
+      // Admin selalu bypass approval check
+      if (roleText === 'admin') {
+        navigate('/admin/dashboard', { replace: true });
+        return;
+      }
+      
+      // Relaksasi: akun sales (account_manager) tidak wajib department_id untuk akses
       const needsApproval = (
         roleText === 'pending' ||
-        (profile.role === 'head' && !profile.division_id) ||
-        ((profile.role === 'manager' || profile.role === 'account_manager') && !profile.department_id)
+        (profile.role === 'manager' && !profile.department_id)
+        // Catatan: head tanpa division_id sekarang diizinkan masuk
       );
 
       if (needsApproval) {
@@ -37,20 +52,20 @@ const Index = () => {
 
       // Jika sudah lengkap, arahkan sesuai role
       switch (profile.role) {
-        case 'admin':
-          navigate('/admin-dashboard', { replace: true });
-          break;
-        case 'manager':
-          navigate('/team-dashboard', { replace: true });
+        case 'account_manager':
+          navigate('/sales-dashboard', { replace: true });
           break;
         case 'head':
           navigate('/executive-dashboard', { replace: true });
           break;
-        case 'account_manager':
-          navigate('/sales-dashboard', { replace: true });
+        case 'manager':
+          navigate('/team-dashboard', { replace: true });
+          break;
+        case 'admin':
+          navigate('/admin/dashboard', { replace: true });
           break;
         default:
-          navigate('/pending', { replace: true });
+          navigate('/auth', { replace: true });
       }
     }
   }, [profile, loading, user, navigate]);

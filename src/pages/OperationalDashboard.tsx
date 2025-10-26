@@ -13,9 +13,11 @@ import { DepartmentPerformanceOverview } from "@/components/dashboard/Department
 import { CalendarDays, Filter, RefreshCw } from "lucide-react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useProfile } from "@/hooks/useProfile";
+import { useRoleBasedData } from "@/hooks/useRoleBasedData";
 
 export default function OperationalDashboard() {
   const { profile } = useProfile();
+  const { availableReps, loading: dataLoading } = useRoleBasedData();
   const [selectedAccountManager, setSelectedAccountManager] = useState<string>("all");
   const [dateRange, setDateRange] = useState<string>("month");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("Q1 2026");
@@ -27,16 +29,8 @@ export default function OperationalDashboard() {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Mock account managers data - in real app, this would come from API based on department
-  const accountManagers = [
-    { id: "all", name: "All Account Managers" },
-    { id: "john", name: "John Smith" },
-    { id: "sarah", name: "Sarah Johnson" },
-    { id: "mike", name: "Mike Davis" },
-    { id: "lisa", name: "Lisa Chen" },
-    { id: "tom", name: "Tom Wilson" },
-    { id: "anna", name: "Anna Garcia" }
-  ];
+  // Build options from real data with an "all" option
+  const amOptions = [{ id: "all", name: "All Account Managers" }, ...availableReps];
 
   return (
     <div className="space-y-6">
@@ -67,10 +61,10 @@ export default function OperationalDashboard() {
                   <label className="text-sm font-medium text-foreground">Account Manager</label>
                   <Select value={selectedAccountManager} onValueChange={setSelectedAccountManager}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select account manager" />
+                      <SelectValue placeholder={dataLoading ? "Loading..." : "Select account manager"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {accountManagers
+                      {amOptions
                         .filter(am => am.id && am.id.trim() !== '' && am.name && am.name.trim() !== '')
                         .map((am) => (
                           <SelectItem key={am.id} value={am.id}>

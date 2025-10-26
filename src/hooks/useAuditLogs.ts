@@ -57,7 +57,7 @@ export const useAuditLogs = (filters?: AuditLogFilters, pageSize: number = 5) =>
 
       let query = supabase
         .from('v_audit_log_complete')
-        .select(`*`)
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
 
@@ -80,22 +80,22 @@ export const useAuditLogs = (filters?: AuditLogFilters, pageSize: number = 5) =>
           .lte('created_at', filters.dateRange.to);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
 
       if (error) throw error;
 
       // Transform the data to include joined information
       const transformedData = (data || []).map((log: any) => ({
         ...log,
+        action_type: String(log.action_type).toUpperCase(),
         user_name: log.user_name || 'Unknown User',
         entity_name: log.entity_name || 'No Entity'
       }));
 
       setAuditLogs(transformedData);
       
-      // Calculate total pages (estimate based on current data)
-      const hasMoreData = transformedData.length === pageSize;
-      setTotalPages(currentPage + (hasMoreData ? 1 : 0));
+      // Calculate total pages based on exact count when available
+      setTotalPages(Math.max(1, Math.ceil(((count ?? transformedData.length) / pageSize))));
     } catch (err: any) {
       console.error('Error fetching audit logs:', err);
       setError(err.message);

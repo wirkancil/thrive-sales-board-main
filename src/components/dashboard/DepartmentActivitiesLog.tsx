@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Activity, Search, Download, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DepartmentActivitiesLogProps {
   selectedDivision: string;
@@ -32,9 +33,176 @@ export function DepartmentActivitiesLog({ selectedDivision, selectedRep, dateRan
   const [typeFilter, setTypeFilter] = useState("all");
   const [outcomeFilter, setOutcomeFilter] = useState("all");
 
+  const getRange = (range: string) => {
+    const now = new Date();
+    const start = new Date(now);
+    switch (range) {
+      case "week": {
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+        start.setDate(diff);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 7);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+      case "quarter": {
+        const month = now.getMonth();
+        const qStartMonth = month - (month % 3);
+        start.setMonth(qStartMonth, 1);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setMonth(qStartMonth + 3, 1);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+      case "year": {
+        start.setMonth(0, 1);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setFullYear(start.getFullYear() + 1);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+      case "month":
+      default: {
+        start.setDate(1);
+        start.setHours(0,0,0,0);
+        const end = new Date(start);
+        end.setMonth(start.getMonth() + 1, 1);
+        return { from: start.toISOString(), to: end.toISOString() };
+      }
+    }
+  };
+
+  const inferType = (subject: string): ActivityLogEntry["type"] => {
+    const s = subject.toLowerCase();
+    if (s.includes("call") || s.includes("phone")) return "call";
+    if (s.includes("email") || s.includes("mail")) return "email";
+    if (s.includes("meeting") || s.includes("demo")) return "meeting";
+    if (s.includes("follow")) return "follow-up";
+    return "meeting"; // default generic
+  };
+
+  const mapActivityTypeToLogType = (t?: string): ActivityLogEntry["type"] => {
+    if (!t) return "meeting";
+    if (t === "call") return "call";
+    if (t === "meeting_online") return "meeting";
+    if (t === "visit") return "meeting";
+    if (t === "go_show") return "demo";
+    return "meeting";
+  };
+
   useEffect(() => {
-    // Initialize empty data - in real app, fetch from API
-    setActivities([]);
+    const fetchActivities = async () => {
+      try {
+        const { from, to } = getRange(dateRange);
+        let query = supabase
+          .from('sales_activity_v2')
+          .select('*')
+          .gte('created_at', from)
+          .lt('created_at', to)
+          .order('created_at', { ascending: false });
+
+        if (selectedRep && selectedRep !== 'all') {
+          query = query.eq('created_by', selectedRep);
+        }
+
+        if (searchTerm) {
+          // Use notes & mom_text for search (v2 fields)
+          query = query.or(`notes.ilike.%${searchTerm}%,mom_text.ilike.%${searchTerm}%,new_opportunity_name.ilike.%${searchTerm}%`);
+        }
+
+        const { data, error } = await query;
+
+        // Fallback to legacy table if v2 relation doesn't exist
+        if (error && (error.code === '42P01' || (error.message || '').includes('sales_activity_v2'))) {
+          let legacyQuery = supabase
+            .from('sales_activity')
+            .select('*')
+            .gte('created_at', from)
+            .lt('created_at', to)
+            .order('created_at', { ascending: false });
+
+          if (selectedRep && selectedRep !== 'all') {
+            legacyQuery = legacyQuery.eq('user_id', selectedRep);
+          }
+
+          if (searchTerm) {
+            legacyQuery = legacyQuery.or(`notes.ilike.%${searchTerm}%,customer_name.ilike.%${searchTerm}%`);
+          }
+
+          const { data: legacyData, error: legacyError } = await legacyQuery;
+          if (legacyError) throw legacyError;
+
+          const acts = legacyData || [];
+          const userIds = Array.from(new Set(acts.map((a: any) => a.user_id).filter(Boolean)));
+          let userMap: Record<string, { name: string; division: string }> = {};
+
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('user_profiles')
+              .select('user_id, full_name, division_id')
+              .in('user_id', userIds);
+            for (const p of profiles || []) {
+              userMap[(p as any).user_id] = { name: (p as any).full_name || (p as any).user_id, division: (p as any).division_id || 'Unknown' };
+            }
+          }
+
+          let filtered = (acts as any[]).map((a: any) => ({
+            id: a.id,
+            date: new Date(a.created_at || a.activity_time),
+            rep: userMap[a.user_id]?.name || a.user_id || 'Unknown',
+            division: userMap[a.user_id]?.division || 'Unknown',
+            type: mapActivityTypeToLogType(a.activity_type),
+            customerName: a.customer_name || '—',
+            notes: a.notes || '',
+          }));
+
+          if (typeFilter !== 'all') {
+            filtered = filtered.filter((f) => f.type === typeFilter);
+          }
+
+          setActivities(filtered);
+          return;
+        }
+
+        if (error) throw error;
+
+        const acts = data || [];
+        const userIds = Array.from(new Set(acts.map((a: any) => a.created_by).filter(Boolean)));
+        let userMap: Record<string, { name: string; division: string }> = {};
+
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('user_id, full_name, division_id')
+            .in('user_id', userIds);
+          for (const p of profiles || []) {
+            userMap[(p as any).user_id] = { name: (p as any).full_name || (p as any).user_id, division: (p as any).division_id || 'Unknown' };
+          }
+        }
+
+        let filtered = (acts as any[]).map((a: any) => ({
+          id: a.id,
+          date: new Date(a.created_at || a.scheduled_at),
+          rep: userMap[a.created_by]?.name || a.created_by || 'Unknown',
+          division: userMap[a.created_by]?.division || 'Unknown',
+          type: mapActivityTypeToLogType(a.activity_type),
+          customerName: '—',
+          notes: a.notes || a.mom_text || a.new_opportunity_name || '',
+        }));
+
+        if (typeFilter !== 'all') {
+          filtered = filtered.filter((f) => f.type === typeFilter);
+        }
+
+        setActivities(filtered);
+      } catch (err) {
+        console.error('Error fetching activities log:', err);
+        setActivities([]);
+      }
+    };
+
+    fetchActivities();
   }, [selectedDivision, selectedRep, dateRange, searchTerm, typeFilter, outcomeFilter]);
 
   const getTypeColor = (type: string) => {

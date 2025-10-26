@@ -3763,6 +3763,10 @@ export type Database = {
           title_id: string
         }[]
       }
+      ensure_admin_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       gtrgm_compress: {
         Args: { "": unknown }
         Returns: unknown

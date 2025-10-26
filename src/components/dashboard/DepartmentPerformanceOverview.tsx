@@ -1,37 +1,185 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useSalesTargets } from '@/hooks/useSalesTargets';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DepartmentPerformanceOverviewProps {
   selectedPeriod?: string;
 }
 
 export function DepartmentPerformanceOverview({
-  selectedPeriod = "Q1 2026"
+  selectedPeriod = 'Q1 2026',
 }: DepartmentPerformanceOverviewProps) {
-  
-  // Mock data for account manager performance within department
-  const accountManagerPerformanceData = useMemo(() => {
-    return [
-      { name: 'John Smith', target: 2500000000, achieved: 1800000000, gap: 700000000 },
-      { name: 'Sarah Johnson', target: 2200000000, achieved: 1980000000, gap: 220000000 },
-      { name: 'Mike Davis', target: 1800000000, achieved: 1620000000, gap: 180000000 },
-      { name: 'Lisa Chen', target: 2000000000, achieved: 1700000000, gap: 300000000 },
-      { name: 'Tom Wilson', target: 1500000000, achieved: 1350000000, gap: 150000000 },
-      { name: 'Anna Garcia', target: 1900000000, achieved: 1710000000, gap: 190000000 }
-    ];
+  const { targets, accountManagers, fetchTargets, fetchAccountManagers } = useSalesTargets();
+  const [measure, setMeasure] = useState<'revenue' | 'margin'>('revenue');
+  const [achievedByProfileRevenue, setAchievedByProfileRevenue] = useState<Record<string, number>>({});
+  const [achievedByProfileMargin, setAchievedByProfileMargin] = useState<Record<string, number>>({});
+
+  // Helper to get quarter date range from label like "Q3 2025"
+  const getQuarterRange = (period: string) => {
+    const m = period?.match(/Q([1-4])\s+(\d{4})/);
+    if (!m) return { start: '', end: '' };
+    const q = parseInt(m[1], 10);
+    const year = parseInt(m[2], 10);
+    const startMonthIdx = (q - 1) * 3; // 0-based month index
+    const start = new Date(year, startMonthIdx, 1);
+    const end = new Date(year, startMonthIdx + 3, 0);
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { start: fmt(start), end: fmt(end) };
+  };
+
+  // Ensure we load team members and period-filtered targets
+  useEffect(() => {
+    fetchAccountManagers();
+    fetchTargets(selectedPeriod);
   }, [selectedPeriod]);
 
-  // Calculate overall department attainment
+  // Compute achieved revenue & margin from real won opportunities and pipeline costs
+  useEffect(() => {
+    const computeActuals = async () => {
+      if (!selectedPeriod || accountManagers.length === 0) {
+        setAchievedByProfileRevenue({});
+        setAchievedByProfileMargin({});
+        return;
+      }
+
+      const { start, end } = getQuarterRange(selectedPeriod);
+      if (!start || !end) return;
+
+      try {
+        // Map profile.id (AM) -> user_id (opportunities.owner_id)
+        const amIds = accountManagers.map((am) => am.id);
+        const { data: profiles } = await supabase
+          .from('user_profiles')
+          .select('id, user_id')
+          .in('id', amIds);
+
+        const profileToUser = new Map<string, string>();
+        (profiles || []).forEach((p: any) => {
+          if (p.id && p.user_id) profileToUser.set(p.id, p.user_id);
+        });
+
+        const ownerUserIds = Array.from(profileToUser.values());
+        if (ownerUserIds.length === 0) {
+          setAchievedByProfileRevenue({});
+          setAchievedByProfileMargin({});
+          return;
+        }
+
+        // Won opportunities within selected period
+        const { data: opps } = await supabase
+          .from('opportunities')
+          .select('id, owner_id, amount, is_won, status, expected_close_date')
+          .in('owner_id', ownerUserIds)
+          .eq('is_won', true)
+          .neq('status', 'archived')
+          .gte('expected_close_date', start)
+          .lte('expected_close_date', end);
+
+        const wonOpps = (opps || []) as any[];
+        const oppIds = wonOpps.map((o) => o.id);
+
+        // Revenue by owner
+        const revenueByOwner: Record<string, number> = {};
+        wonOpps.forEach((o) => {
+          const amt = Number(o.amount) || 0;
+          const owner = o.owner_id;
+          revenueByOwner[owner] = (revenueByOwner[owner] || 0) + amt;
+        });
+
+        // Costs per opportunity for margin
+        let costsByOpp: Record<string, number> = {};
+        if (oppIds.length > 0) {
+          const { data: items } = await supabase
+            .from('pipeline_items')
+            .select('opportunity_id, cost_of_goods, service_costs, other_expenses')
+            .in('opportunity_id', oppIds);
+
+          (items || []).forEach((it: any) => {
+            const cogs = Number(it.cost_of_goods) || 0;
+            const svc = Number(it.service_costs) || 0;
+            const other = Number(it.other_expenses) || 0;
+            const total = cogs + svc + other;
+            costsByOpp[it.opportunity_id] = (costsByOpp[it.opportunity_id] || 0) + total;
+          });
+        }
+
+        // Margin by owner
+        const marginByOwner: Record<string, number> = {};
+        wonOpps.forEach((o) => {
+          const amt = Number(o.amount) || 0;
+          const cost = costsByOpp[o.id] || 0;
+          const margin = Math.max(0, amt - cost);
+          const owner = o.owner_id;
+          marginByOwner[owner] = (marginByOwner[owner] || 0) + margin;
+        });
+
+        // Map back user_id -> profile.id
+        const userToProfile = new Map<string, string>();
+        (profiles || []).forEach((p: any) => {
+          if (p.id && p.user_id) userToProfile.set(p.user_id, p.id);
+        });
+
+        const achievedRevByProfile: Record<string, number> = {};
+        const achievedMarByProfile: Record<string, number> = {};
+
+        Object.entries(revenueByOwner).forEach(([userId, rev]) => {
+          const profileId = userToProfile.get(userId);
+          if (profileId) achievedRevByProfile[profileId] = rev;
+        });
+
+        Object.entries(marginByOwner).forEach(([userId, mar]) => {
+          const profileId = userToProfile.get(userId);
+          if (profileId) achievedMarByProfile[profileId] = mar;
+        });
+
+        setAchievedByProfileRevenue(achievedRevByProfile);
+        setAchievedByProfileMargin(achievedMarByProfile);
+      } catch (e) {
+        console.error('Error computing actuals:', e);
+        setAchievedByProfileRevenue({});
+        setAchievedByProfileMargin({});
+      }
+    };
+
+    computeActuals();
+  }, [selectedPeriod, accountManagers]);
+
+  // Build AM bar data: target vs achieved for selected measure
+  const accountManagerPerformanceData = useMemo(() => {
+    if (!accountManagers || accountManagers.length === 0) return [] as { name: string; target: number; achieved: number; gap: number }[];
+
+    return accountManagers.map((am) => {
+      const targetSum = targets
+        .filter((t) => t.assigned_to === am.id && t.measure === measure)
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      const achieved = measure === 'revenue'
+        ? (achievedByProfileRevenue[am.id] ?? 0)
+        : (achievedByProfileMargin[am.id] ?? 0);
+
+      const gap = Math.max(0, targetSum - achieved);
+      return {
+        name: am.full_name,
+        target: targetSum,
+        achieved,
+        gap,
+      };
+    });
+  }, [accountManagers, targets, measure, achievedByProfileRevenue, achievedByProfileMargin]);
+
+  // Overall attainment for selected measure
   const attainmentData = useMemo(() => {
     const totalTarget = accountManagerPerformanceData.reduce((sum, am) => sum + am.target, 0);
     const totalAchieved = accountManagerPerformanceData.reduce((sum, am) => sum + am.achieved, 0);
     const achievementRate = totalTarget > 0 ? (totalAchieved / totalTarget) * 100 : 0;
-    
+
     return [
       { name: 'Achieved', value: Math.round(achievementRate), fill: 'hsl(var(--primary))' },
-      { name: 'Remaining', value: Math.round(100 - achievementRate), fill: 'hsl(var(--muted))' }
+      { name: 'Remaining', value: Math.round(100 - achievementRate), fill: 'hsl(var(--muted))' },
     ];
   }, [accountManagerPerformanceData]);
 
@@ -40,7 +188,7 @@ export function DepartmentPerformanceOverview({
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(value);
   };
 
@@ -53,9 +201,18 @@ export function DepartmentPerformanceOverview({
             <TrendingUp className="h-6 w-6" />
             Department Performance
           </h2>
-          <p className="text-muted-foreground">
-            Track account manager performance within your department
-          </p>
+          <p className="text-muted-foreground">Track account manager performance within your department</p>
+        </div>
+        <div className="w-48">
+          <Select value={measure} onValueChange={(v) => setMeasure(v as 'revenue' | 'margin')}>
+            <SelectTrigger>
+              <SelectValue placeholder="Measure" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="revenue">Revenue</SelectItem>
+              <SelectItem value="margin">Margin</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -66,20 +223,16 @@ export function DepartmentPerformanceOverview({
           <Card>
             <CardHeader>
               <CardTitle>Account Manager Performance</CardTitle>
-              <CardDescription>Target vs Achievement by Account Manager</CardDescription>
+              <CardDescription>
+                Target vs Achievement by Account Manager — {measure === 'revenue' ? 'Revenue' : 'Margin'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={accountManagerPerformanceData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="name" 
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                      fontSize={12}
-                    />
+                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} fontSize={12} />
                     <YAxis fontSize={12} />
                     <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                     <Bar dataKey="target" fill="hsl(var(--muted))" name="Target" radius={[2, 2, 0, 0]} />
@@ -95,21 +248,13 @@ export function DepartmentPerformanceOverview({
         <Card>
           <CardHeader>
             <CardTitle className="text-center">Overall Attainment</CardTitle>
+            <CardDescription className="text-center">{measure === 'revenue' ? 'Revenue' : 'Margin'} Attainment</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-center">
-            <div className="relative">
-              <ResponsiveContainer width={200} height={200}>
+            <div className="relative w-[200px] h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={attainmentData}
-                    cx={100}
-                    cy={100}
-                    innerRadius={60}
-                    outerRadius={90}
-                    startAngle={90}
-                    endAngle={450}
-                    dataKey="value"
-                  >
+                  <Pie data={attainmentData} cx={100} cy={100} innerRadius={60} outerRadius={90} startAngle={90} endAngle={450} dataKey="value">
                     {attainmentData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}

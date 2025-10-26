@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { useProfile } from "@/hooks/useProfile";
@@ -6,91 +6,138 @@ import { useRoleBasedData } from "@/hooks/useRoleBasedData";
 import { ExportButton } from "@/components/ExportButton";
 import { formatCurrency } from "@/lib/constants";
 import { TrendingUp, Target, Calendar, AlertTriangle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
 interface ForecastTile {
   label: string;
   value: number;
   icon: React.ReactNode;
   color: string;
 }
-export default function ManagerForecasting() {
-  const {
-    profile
-  } = useProfile();
-  const {
-    opportunities,
-    loading
-  } = useRoleBasedData();
-  const [probabilityAdjustment, setProbabilityAdjustment] = useState([0]);
 
-  // Calculate base weighted pipeline
+export default function ManagerForecasting() {
+  const { profile } = useProfile();
+  const { opportunities, loading } = useRoleBasedData();
+  const [probabilityAdjustment, setProbabilityAdjustment] = useState([0]);
+  const [periodTarget, setPeriodTarget] = useState(0);
+
+  // Quarter range for current quarter
+  const getQuarterRange = () => {
+    const now = new Date();
+    const quarter = Math.floor(now.getMonth() / 3); // 0..3
+    const start = new Date(now.getFullYear(), quarter * 3, 1);
+    const end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return { start: fmt(start), end: fmt(end) };
+  };
+
+  const { start: quarterStart, end: quarterEnd } = getQuarterRange();
+
+  const isWithinQuarter = (dateStr?: string) => {
+    if (!dateStr) return false;
+    return dateStr >= quarterStart && dateStr <= quarterEnd;
+  };
+
+  // Fetch target for current quarter aggregated over manager's team
+  useEffect(() => {
+    const fetchTarget = async () => {
+      if (!profile) return;
+      try {
+        // Determine team profiles by department
+        const { data: deptProfiles, error: profErr } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('department_id', profile.department_id);
+        if (profErr) throw profErr;
+        const assignedProfileIds = (deptProfiles || []).map((p: any) => p.id).filter(Boolean);
+        if (assignedProfileIds.length === 0) {
+          setPeriodTarget(0);
+          return;
+        }
+
+        const { data: targets, error } = await supabase
+          .from('sales_targets')
+          .select('assigned_to, amount, measure, period_start, period_end')
+          .in('assigned_to', assignedProfileIds)
+          .eq('measure', 'revenue')
+          .lte('period_start', quarterEnd)
+          .gte('period_end', quarterStart);
+        if (error) throw error;
+
+        // Sum contribution within selected quarter
+        const parseDate = (s: string) => new Date(s + 'T00:00:00');
+        const diffMonthsInclusive = (a: Date, b: Date) => {
+          return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+        };
+        const startDate = parseDate(quarterStart);
+        const endDate = parseDate(quarterEnd);
+
+        const totalTarget = (targets || []).reduce((sum: number, t: any) => {
+          const tStart = parseDate(t.period_start);
+          const tEnd = parseDate(t.period_end);
+          const totalMonths = Math.max(diffMonthsInclusive(tStart, tEnd), 1);
+          const oStart = new Date(Math.max(tStart.getTime(), startDate.getTime()));
+          const oEnd = new Date(Math.min(tEnd.getTime(), endDate.getTime()));
+          if (oEnd < oStart) return sum;
+          const overlapMonths = Math.max(diffMonthsInclusive(oStart, oEnd), 0);
+          const contribution = (Number(t.amount) || 0) * (overlapMonths / totalMonths);
+          return sum + contribution;
+        }, 0);
+
+        setPeriodTarget(totalTarget);
+      } catch (err) {
+        console.error('Error fetching forecast target:', err);
+        setPeriodTarget(0);
+      }
+    };
+
+    fetchTarget();
+  }, [profile, quarterStart, quarterEnd]);
+
+  // Calculate weighted pipeline using filtered opportunities
   const calculateWeightedPipeline = (adjustment = 0) => {
-    return opportunities.reduce((sum, opp) => {
+    const filteredOpps = opportunities.filter(opp => isWithinQuarter(opp.expected_close_date));
+    return filteredOpps.reduce((sum, opp) => {
       const adjustedProbability = Math.min(100, Math.max(0, (opp.probability || 0) + adjustment));
-      return sum + opp.amount * adjustedProbability / 100;
+      return sum + (opp.amount || 0) * adjustedProbability / 100;
     }, 0);
   };
 
-  // Calculate forecast by quarter
+  // Calculate forecast by quarter (commit/best/omitted within quarter)
   const calculateQuarterForecast = () => {
-    const commit = opportunities.filter(opp => opp.forecast_category === 'Commit').reduce((sum, opp) => sum + opp.amount, 0);
-    const best = opportunities.filter(opp => opp.forecast_category === 'Best Case').reduce((sum, opp) => sum + opp.amount, 0);
-    const omitted = opportunities.filter(opp => opp.forecast_category === 'Pipeline').reduce((sum, opp) => sum + opp.amount, 0);
-    const target = 5000000; // Mock quarterly target
-    const gap = target - commit;
-    return {
-      commit,
-      best,
-      omitted,
-      gap,
-      target
-    };
+    const filteredOpps = opportunities.filter(opp => isWithinQuarter(opp.expected_close_date));
+    const commit = filteredOpps.filter(opp => opp.forecast_category === 'Commit').reduce((sum, opp) => sum + (opp.amount || 0), 0);
+    const best = filteredOpps.filter(opp => opp.forecast_category === 'Best Case').reduce((sum, opp) => sum + (opp.amount || 0), 0);
+    const omitted = filteredOpps.filter(opp => opp.forecast_category === 'Pipeline').reduce((sum, opp) => sum + (opp.amount || 0), 0);
+    const target = periodTarget;
+    const gap = Math.max(0, target - commit);
+    return { commit, best, omitted, gap, target };
   };
+
   const baseWeightedPipeline = calculateWeightedPipeline();
   const adjustedWeightedPipeline = calculateWeightedPipeline(probabilityAdjustment[0]);
-  const {
-    commit,
-    best,
-    omitted,
-    gap,
-    target
-  } = calculateQuarterForecast();
-  const forecastTiles: ForecastTile[] = [{
-    label: "Commit",
-    value: commit,
-    icon: <Target className="h-5 w-5" />,
-    color: "text-green-600"
-  }, {
-    label: "Best",
-    value: best,
-    icon: <TrendingUp className="h-5 w-5" />,
-    color: "text-blue-600"
-  }, {
-    label: "Omitted",
-    value: omitted,
-    icon: <Calendar className="h-5 w-5" />,
-    color: "text-gray-600"
-  }, {
-    label: "Gap",
-    value: gap,
-    icon: <AlertTriangle className="h-5 w-5" />,
-    color: gap > 0 ? "text-red-600" : "text-green-600"
-  }];
+  const { commit, best, omitted, gap, target } = calculateQuarterForecast();
+
+  const forecastTiles: ForecastTile[] = [
+    { label: "Commit", value: commit, icon: <Target className="h-5 w-5" />, color: "text-green-600" },
+    { label: "Best", value: best, icon: <TrendingUp className="h-5 w-5" />, color: "text-blue-600" },
+    { label: "Omitted", value: omitted, icon: <Calendar className="h-5 w-5" />, color: "text-gray-600" },
+    { label: "Gap", value: gap, icon: <AlertTriangle className="h-5 w-5" />, color: gap > 0 ? "text-red-600" : "text-green-600" }
+  ];
+
   if (loading) {
     return <div className="p-6">Loading...</div>;
   }
-  return <div className="space-y-6 p-6">
+
+  return (
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Pipeline Forecasting</h1>
-          <p className="text-muted-foreground mt-1">
-            Manager / Pipeline / Forecasting
-          </p>
+          <p className="text-muted-foreground mt-1">Manager / Pipeline / Forecasting</p>
         </div>
-        <ExportButton 
-          data={opportunities} 
-          filename="pipeline-forecast"
-        />
+        <ExportButton data={opportunities} filename="pipeline-forecast" />
       </div>
 
       {/* Weighted Pipeline Metric */}
@@ -107,17 +154,21 @@ export default function ManagerForecasting() {
               <div className="text-4xl font-bold text-blue-600 mb-2">
                 {formatCurrency(adjustedWeightedPipeline)}
               </div>
-              {probabilityAdjustment[0] !== 0 && <div className="text-sm text-muted-foreground">
-                  Base: {formatCurrency(baseWeightedPipeline)} 
+              {probabilityAdjustment[0] !== 0 && (
+                <div className="text-sm text-muted-foreground">
+                  Base: {formatCurrency(baseWeightedPipeline)}
                   <span className={`ml-2 ${adjustedWeightedPipeline > baseWeightedPipeline ? 'text-green-600' : 'text-red-600'}`}>
                     ({adjustedWeightedPipeline > baseWeightedPipeline ? '+' : ''}
                     {formatCurrency(adjustedWeightedPipeline - baseWeightedPipeline)})
                   </span>
-                </div>}
+                </div>
+              )}
             </div>
             <div className="text-right">
               <div className="text-sm text-muted-foreground mb-1">Based on</div>
-              <div className="text-lg font-semibold">{opportunities.length} opportunities</div>
+              <div className="text-lg font-semibold">
+                {opportunities.filter(opp => isWithinQuarter(opp.expected_close_date)).length} opportunities
+              </div>
             </div>
           </div>
         </CardContent>
@@ -130,22 +181,22 @@ export default function ManagerForecasting() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            {forecastTiles.map((tile, index) => <Card key={index} className="border-2">
+            {forecastTiles.map((tile, index) => (
+              <Card key={index} className="border-2">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className={tile.color}>
-                      {tile.icon}
-                    </div>
+                    <div className={tile.color}>{tile.icon}</div>
                     <span className="text-sm font-medium">{tile.label}</span>
                   </div>
-                  <div className={`text-2xl font-bold ${tile.color}`}>
-                    {formatCurrency(tile.value)}
-                  </div>
-                  {tile.label === "Gap" && <div className="text-xs text-muted-foreground mt-1">
+                  <div className={`text-2xl font-bold ${tile.color}`}>{formatCurrency(tile.value)}</div>
+                  {tile.label === "Gap" && (
+                    <div className="text-xs text-muted-foreground mt-1">
                       Target: {formatCurrency(target)}
-                    </div>}
+                    </div>
+                  )}
                 </CardContent>
-              </Card>)}
+              </Card>
+            ))}
           </div>
 
           {/* Forecast Summary */}
@@ -153,11 +204,11 @@ export default function ManagerForecasting() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
                 <div className="font-medium text-green-600">Commit Achievement</div>
-                <div>{Math.round(commit / target * 100)}% of target</div>
+                <div>{target > 0 ? Math.round((commit / target) * 100) : 0}% of target</div>
               </div>
               <div>
                 <div className="font-medium text-blue-600">Best Case Potential</div>
-                <div>{Math.round((commit + best) / target * 100)}% of target</div>
+                <div>{target > 0 ? Math.round(((commit + best) / target) * 100) : 0}% of target</div>
               </div>
               <div>
                 <div className="font-medium text-purple-600">Total Pipeline</div>
@@ -221,7 +272,7 @@ export default function ManagerForecasting() {
             <div className="bg-blue-50 rounded-lg p-4">
               <div className="text-sm font-medium text-blue-800 mb-2">Forecasting Insights</div>
               <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Current weighted pipeline is {Math.round(baseWeightedPipeline / target * 100)}% of quarterly target</li>
+                <li>• Current weighted pipeline is {periodTarget > 0 ? Math.round((baseWeightedPipeline / periodTarget) * 100) : 0}% of quarterly target</li>
                 <li>• {gap > 0 ? `Need ${formatCurrency(gap)} more in Commit category to reach target` : 'Exceeded target by ' + formatCurrency(Math.abs(gap))}</li>
                 <li>• A +10% probability adjustment would add {formatCurrency(calculateWeightedPipeline(10) - baseWeightedPipeline)} to pipeline</li>
               </ul>
@@ -229,5 +280,6 @@ export default function ManagerForecasting() {
           </div>
         </CardContent>
       </Card>
-    </div>;
+    </div>
+  );
 }

@@ -53,11 +53,17 @@ export default function useTargetAchievement(user) {
 
         const totalMargin = wonAmount - totalCosts;
 
-        // --- 3️⃣ Ambil sales target berdasarkan user ---
+        // --- 3️⃣ Ambil sales target berdasarkan user (pakai profile.id) ---
+        const { data: profile, error: profileError } = await supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (profileError) throw profileError;
         const { data: salesTargets, error: targetError } = await supabase
           .from("sales_targets")
           .select("amount, measure, created_at")
-          .eq("assigned_to", user.id)
+          .eq("assigned_to", profile?.id)
           .order("created_at", { ascending: false });
 
         if (targetError) throw targetError;

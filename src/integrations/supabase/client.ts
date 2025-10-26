@@ -5,13 +5,33 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://rztocwslaaskfnkevqxs.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6dG9jd3NsYWFza2Zua2V2cXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTc0ODUsImV4cCI6MjA2ODI5MzQ4NX0.boN8JsN5qUvXRBjj6V3KS_Fv-psBgatgQewV8hoF5Q0";
 
+// Debug logging for environment variables
+console.log('Supabase Config:', {
+  url: SUPABASE_URL,
+  hasKey: !!SUPABASE_PUBLISHABLE_KEY,
+  keyPrefix: SUPABASE_PUBLISHABLE_KEY?.substring(0, 20) + '...'
+});
+
+// Validate required configuration
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  throw new Error('Missing Supabase configuration. Please check your environment variables.');
+}
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+const existingClient = (globalThis as any).__supabaseClient as ReturnType<typeof createClient<Database>> | undefined;
+export const supabase = existingClient ?? createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+    storageKey: 'tsb-auth-dev',
+  },
+  global: {
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+    },
+  },
 });
+(globalThis as any).__supabaseClient = supabase;

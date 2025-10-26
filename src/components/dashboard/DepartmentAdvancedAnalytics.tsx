@@ -86,7 +86,7 @@ export function DepartmentAdvancedAnalytics({ selectedDivision, selectedRep, dat
           </div>
         ))}
         {days.map(day => (
-          <React.Fragment key={day}>
+          <div className="contents" key={day}>
             <div className="font-medium text-muted-foreground p-1">{day}</div>
             {times.map(time => {
               const data = activityHeatmap.find(d => d.day === day && d.time === time);
@@ -103,7 +103,7 @@ export function DepartmentAdvancedAnalytics({ selectedDivision, selectedRep, dat
                 </div>
               );
             })}
-          </React.Fragment>
+          </div>
         ))}
       </div>
     );

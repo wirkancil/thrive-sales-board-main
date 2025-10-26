@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -19,11 +19,12 @@ const Auth = () => {
     fullName: '',
   });
 
-  // Redirect if already authenticated
-  if (user) {
-    navigate('/');
-    return null;
-  }
+  // Redirect if already authenticated (avoid state updates during render)
+  useEffect(() => {
+    if (user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({

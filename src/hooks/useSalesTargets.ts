@@ -47,8 +47,8 @@ export const useSalesTargets = () => {
 
       const { data: userProfile, error: profileError } = await supabase
         .from("user_profiles")
-        .select("role, division_id, department_id")
-        .eq("id", currentUser.id)
+        .select("id, role, division_id, department_id")
+        .eq("user_id", currentUser.id)
         .maybeSingle();
 
       if (profileError) {
@@ -89,12 +89,93 @@ export const useSalesTargets = () => {
           return;
         }
 
+        // Try explicit team mapping first via manager_team_members
+        const { data: teamMap, error: teamErr } = await supabase
+          .from("manager_team_members")
+          .select("account_manager_id")
+          .eq("manager_id", (userProfile as any).id);
+
+        if (teamErr) {
+          console.error("Error fetching manager team mapping:", teamErr);
+          toast({
+            title: "Error",
+            description: "Failed to fetch your team mapping",
+            variant: "destructive",
+          });
+          setAccountManagers([]);
+          return;
+        }
+
+        const mappedAmIds = (teamMap || [])
+          .map((t: any) => t.account_manager_id)
+          .filter(Boolean);
+
+        if (mappedAmIds.length > 0) {
+          const { data: amData, error: amError } = await supabase
+            .from("user_profiles")
+            .select("id, full_name, role")
+            .in("id", mappedAmIds)
+            .eq("role", "account_manager")
+            .eq("is_active", true)
+            .not("email", "ilike", "demo_am_%@example.com")
+            .order("full_name");
+
+          if (amError) {
+            console.error("Error fetching mapped account managers:", amError);
+            toast({
+              title: "Error",
+              description: "Failed to fetch your mapped account managers",
+              variant: "destructive",
+            });
+            setAccountManagers([]);
+            return;
+          }
+
+          console.log("Mapped AM count:", (amData || []).length);
+
+          setAccountManagers(
+            (amData || []) as Array<{ id: string; full_name: string; role?: string }>
+          );
+          return; // Do not fallback if explicit mapping exists
+        }
+
+        // Second preference: direct manager_id relationship mapping
+        const { data: mgrLinkedAms, error: mgrLinkedErr } = await supabase
+          .from("user_profiles")
+          .select("id, full_name, role")
+          .eq("manager_id", (userProfile as any).id)
+          .eq("role", "account_manager")
+          .eq("is_active", true)
+          .not("email", "ilike", "demo_am_%@example.com")
+          .order("full_name");
+
+        if (mgrLinkedErr) {
+          console.error("Error fetching manager_id-linked account managers:", mgrLinkedErr);
+          toast({
+            title: "Error",
+            description: "Failed to fetch your direct account managers",
+            variant: "destructive",
+          });
+          setAccountManagers([]);
+          return;
+        }
+
+        if (mgrLinkedAms && mgrLinkedAms.length > 0) {
+          console.log("Direct AM by manager_id count:", mgrLinkedAms.length);
+          setAccountManagers(
+            mgrLinkedAms as { id: string; full_name: string; role?: string }[]
+          );
+          return;
+        }
+
+        // Fallback to department-based active Account Managers
         const { data: amData, error: amError } = await supabase
           .from("user_profiles")
           .select("id, full_name, role")
-          .eq("department_id", userProfile.department_id)
+          .eq("department_id", (userProfile as any).department_id)
           .eq("role", "account_manager")
           .eq("is_active", true)
+          .not("email", "ilike", "demo_am_%@example.com")
           .order("full_name");
 
         if (amError) {
@@ -109,13 +190,99 @@ export const useSalesTargets = () => {
         }
 
         if (!amData || amData.length === 0) {
+          // Last-resort: broaden search to division or global to avoid empty dropdown
+          let broadQuery: any = supabase
+            .from("user_profiles")
+            .select("id, full_name, role")
+            .eq("role", "account_manager")
+            .eq("is_active", true);
+
+          if ((userProfile as any).division_id) {
+            broadQuery = broadQuery.eq("division_id", (userProfile as any).division_id);
+          }
+          broadQuery = broadQuery.not("email", "ilike", "demo_am_%@example.com");
+
+          const { data: fallbackData, error: fallbackErr } = await broadQuery.order("full_name");
+
+          if (fallbackErr) {
+            console.error("Error fetching fallback account managers:", fallbackErr);
+            toast({
+              title: "No Data",
+              description: "No active account managers found in your department",
+            });
+            setAccountManagers([]);
+            return;
+          }
+
+          if (!fallbackData || fallbackData.length === 0) {
+            // New ultra-fallback: drop is_active filter to ensure real data surfaces
+            let ultraQuery: any = supabase
+              .from("user_profiles")
+              .select("id, full_name, role")
+              .eq("role", "account_manager");
+
+            if ((userProfile as any).department_id) {
+              ultraQuery = ultraQuery.eq("department_id", (userProfile as any).department_id);
+            } else if ((userProfile as any).division_id) {
+              ultraQuery = ultraQuery.eq("division_id", (userProfile as any).division_id);
+            }
+            ultraQuery = ultraQuery.not("email", "ilike", "demo_am_%@example.com");
+
+            const { data: ultraData, error: ultraErr } = await ultraQuery.order("full_name");
+
+            if (ultraErr) {
+              console.error("Error fetching ultra fallback account managers:", ultraErr);
+              toast({
+                title: "No Data",
+                description: "No account managers found in your scope",
+              });
+              setAccountManagers([]);
+              return;
+            }
+
+            if (!ultraData || ultraData.length === 0) {
+              // Global ultra-fallback without is_active filter
+              const { data: globalUltra, error: globalUltraErr } = await supabase
+                .from("user_profiles")
+                .select("id, full_name, role")
+                .eq("role", "account_manager")
+                .not("email", "ilike", "demo_am_%@example.com")
+                .order("full_name");
+
+              if (globalUltraErr) {
+                console.error("Error fetching global ultra fallback:", globalUltraErr);
+                setAccountManagers([]);
+                return;
+              }
+
+              console.log("Global ultra AM count:", (globalUltra || []).length);
+              setAccountManagers(
+                (globalUltra || []) as { id: string; full_name: string; role?: string }[]
+              );
+              return;
+            }
+
+            console.log("Ultra fallback AM count:", (ultraData || []).length);
+            setAccountManagers(
+              (ultraData || []) as { id: string; full_name: string; role?: string }[]
+            );
+            return;
+          }
+
           toast({
-            title: "No Data",
-            description: "No active account managers found in your department",
+            title: "Showing all active Account Managers",
+            description: "Please configure your team/department to narrow selection.",
           });
-          setAccountManagers([]);
+
+          console.log("Fallback active AM count:", (fallbackData || []).length);
+
+          setAccountManagers(
+            fallbackData as { id: string; full_name: string; role?: string }[]
+          );
           return;
         }
+
+        console.log("Department active AM count:", (amData || []).length);
 
         setAccountManagers(
           amData as Array<{ id: string; full_name: string; role?: string }>
@@ -138,6 +305,7 @@ export const useSalesTargets = () => {
           .eq("division_id", userProfile.division_id)
           .in("role", ["account_manager", "manager"])
           .eq("is_active", true)
+          .not("email", "ilike", "demo_am_%@example.com")
           .order("role", { ascending: false })
           .order("full_name");
 
@@ -161,6 +329,8 @@ export const useSalesTargets = () => {
           return;
         }
 
+        console.log("Head division team count:", (amData || []).length);
+
         setAccountManagers(
           amData as Array<{ id: string; full_name: string; role?: string }>
         );
@@ -171,6 +341,7 @@ export const useSalesTargets = () => {
           .select("id, full_name, role")
           .in("role", ["account_manager", "manager", "head"])
           .eq("is_active", true)
+          .not("email", "ilike", "demo_am_%@example.com")
           .order("role", { ascending: false })
           .order("full_name");
 
@@ -184,6 +355,8 @@ export const useSalesTargets = () => {
           setAccountManagers([]);
           return;
         }
+
+        console.log("Admin visible team count:", (amData || []).length);
 
         setAccountManagers(amData || []);
       } else {
@@ -213,11 +386,11 @@ export const useSalesTargets = () => {
         throw new Error("User not authenticated");
       }
 
-      const { data: userProfile, error: profileError } = await supabase
+      const { data: userProfile, error: profileError } = (await supabase
         .from("user_profiles")
-        .select("role, division_id, department_id")
-        .eq("id", currentUser.id)
-        .maybeSingle();
+        .select("id, role, division_id, department_id")
+        .eq("user_id", currentUser.id)
+        .maybeSingle()) as any;
 
       if (profileError) {
         console.error("Profile fetch error:", profileError);
@@ -229,13 +402,7 @@ export const useSalesTargets = () => {
       }
 
       // Build query based on user role and permissions
-      const baseQuery = `
-        *,
-        assigned_user:user_profiles!fk_sales_targets_assigned_to_user_profiles(
-          id, full_name, role, division_id, department_id
-        )
-      `;
-
+      const baseQuery = `*`;
       let query = supabase.from("sales_targets").select(baseQuery);
 
       if (userProfile.role === "admin") {
@@ -260,7 +427,7 @@ export const useSalesTargets = () => {
       } else {
         console.log("Individual access - showing own targets only");
         // Others see only their own targets
-        query = query.eq("assigned_to", currentUser.id);
+        query = query.eq("assigned_to", (userProfile as any).id);
       }
 
       // Filter by quarter if selectedPeriod is provided
@@ -295,18 +462,32 @@ export const useSalesTargets = () => {
         ascending: false,
       });
 
-      if (error) {
-        console.error("Query error:", error);
-        throw error;
+       if (error) {
+         console.error("Query error:", error);
+         throw error;
+       }
+      // Join assigned user profiles separately to avoid FK name dependency
+      const targets = ((data as any[]) || []) as any[];
+      const assignedIds = Array.from(
+        new Set(targets.map((t) => t.assigned_to).filter(Boolean))
+      );
+      let userMap = new Map<string, any>();
+      if (assignedIds.length > 0) {
+        const { data: users, error: usersErr } = await (supabase as any)
+          .from("user_profiles")
+          .select("id, full_name, role, division_id, department_id")
+          .in("id", assignedIds);
+        if (!usersErr && users) {
+          userMap = new Map((users as any[]).map((u: any) => [u.id, u]));
+        }
       }
 
-      const processedTargets =
-        (data as any[])?.map((item) => ({
-          ...item,
-          account_manager: item.assigned_user || null,
-        })) || [];
+      const processedTargets = targets.map((item) => ({
+        ...item,
+        account_manager: userMap.get(item.assigned_to) || null,
+      }));
 
-      setTargets(processedTargets);
+       setTargets(processedTargets);
     } catch (err: any) {
       console.error("Error fetching sales targets:", err);
       setError(err.message);
@@ -342,7 +523,7 @@ export const useSalesTargets = () => {
         await supabase
           .from("user_profiles")
           .select("division_id, department_id")
-          .eq("id", currentUser.id)
+          .eq("user_id", currentUser.id)
           .single();
 
       if (currentProfileError) {
@@ -353,7 +534,7 @@ export const useSalesTargets = () => {
         throw currentProfileError;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("sales_targets")
         .insert({
           assigned_to: targetData.account_manager_id,
@@ -361,29 +542,31 @@ export const useSalesTargets = () => {
           amount: targetData.target_amount,
           period_start: targetData.period_start,
           period_end: targetData.period_end,
-          created_by: currentUser.id,
           division_id: currentUserProfile?.division_id || null,
           department_id: currentUserProfile?.department_id || null,
         })
-        .select(
-          `
-          *,
-          assigned_user:user_profiles!fk_sales_targets_assigned_to_user_profiles(
-            id, full_name, role, division_id, department_id
-          )
-        `
-        )
+        .select("*")
         .single();
 
       if (error) throw error;
 
-      setTargets((prev) => [data as unknown as SalesTarget, ...prev]);
+      let hydrated = data as any;
+      if (hydrated?.assigned_to) {
+        const { data: amUser } = await (supabase as any)
+          .from("user_profiles")
+          .select("id, full_name, role, division_id, department_id")
+          .eq("id", hydrated.assigned_to)
+          .maybeSingle();
+        hydrated = { ...hydrated, account_manager: amUser || null };
+      }
+
+      setTargets((prev) => [hydrated as unknown as SalesTarget, ...prev]);
       toast({
         title: "Success",
         description: "Sales target created successfully",
       });
 
-      return { data, error: null };
+      return { data: hydrated, error: null };
     } catch (err: any) {
       console.error("Error creating sales target:", err);
       toast({
@@ -401,21 +584,24 @@ export const useSalesTargets = () => {
         .from("sales_targets")
         .update(updates)
         .eq("id", id)
-        .select(
-          `
-          *,
-          assigned_user:user_profiles!fk_sales_targets_assigned_to_user_profiles(
-            full_name
-          )
-        `
-        )
+        .select("*")
         .single();
 
       if (error) throw error;
 
+      let hydrated = data as any;
+      if (hydrated?.assigned_to) {
+        const { data: amUser } = await (supabase as any)
+          .from("user_profiles")
+          .select("id, full_name, role, division_id, department_id")
+          .eq("id", hydrated.assigned_to)
+          .maybeSingle();
+        hydrated = { ...hydrated, account_manager: amUser || null };
+      }
+
       setTargets((prev) =>
         prev.map((target) =>
-          target.id === id ? (data as unknown as SalesTarget) : target
+          target.id === id ? (hydrated as unknown as SalesTarget) : target
         )
       );
       toast({
