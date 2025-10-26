@@ -76,7 +76,8 @@ export function OpportunityKanban({ userProfile, onRefresh }: OpportunityKanbanP
             name
           )
         `)
-        .eq('is_active', true);
+-        .eq('is_active', true);
++        .eq('status', 'open');
 
       // Role-based filtering
       if (userProfile.role === 'account_manager') {

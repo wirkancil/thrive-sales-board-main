@@ -166,7 +166,7 @@ export default function EditOpportunityModal({ isOpen, onClose, opportunity, onU
     try {
       const { error } = await supabase
         .from('opportunities')
-        .update({ is_active: false })
+        .update({ is_closed: true, status: 'cancelled' })
         .eq('id', opportunity.id);
 
       if (error) throw error;

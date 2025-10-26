@@ -60,22 +60,42 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
         const { data: teamMembers } = await supabase
           .from('manager_team_members')
           .select('account_manager_id')
-          .eq('manager_id', user.id);
+          .eq('manager_id', profile.id);
 
-        if (teamMembers && teamMembers.length > 0) {
-          const teamIds = teamMembers.map(m => m.account_manager_id);
-          query = query.in('owner_id', teamIds);
+        const amIds = (teamMembers || []).map((m: any) => m.account_manager_id);
+        let ownerUserIds: string[] = [];
+        if (amIds.length > 0) {
+          const { data: amProfiles } = await supabase
+            .from('user_profiles')
+            .select('user_id')
+            .in('id', amIds);
+          ownerUserIds = (amProfiles || []).map((p: any) => p.user_id).filter(Boolean);
+        } else if (profile.department_id) {
+          const { data: deptUsers } = await supabase
+            .from('user_profiles')
+            .select('user_id')
+            .eq('department_id', profile.department_id);
+          ownerUserIds = (deptUsers || []).map((u: any) => u.user_id).filter(Boolean);
+        }
+
+        if (ownerUserIds.length > 0) {
+          query = query.in('owner_id', ownerUserIds);
         }
       } else if (profile.role === 'head') {
-        // Get all opportunities in entity
-        const { data: entityMembers } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .eq('entity_id', profile.entity_id);
+        // Get all opportunities in entity - only if entity_id exists
+        if (profile.entity_id) {
+          const { data: entityMembers } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('entity_id', profile.entity_id);
 
-        if (entityMembers && entityMembers.length > 0) {
-          const entityIds = entityMembers.map(m => m.id);
-          query = query.in('owner_id', entityIds);
+          if (entityMembers && entityMembers.length > 0) {
+            const entityIds = entityMembers.map(m => m.id);
+            query = query.in('owner_id', entityIds);
+          }
+        } else {
+          // If no entity_id, fallback to just the current user
+          query = query.eq('owner_id', user.id);
         }
       }
 
@@ -90,7 +110,7 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
       const { data: targets } = await supabase
         .from('sales_targets')
         .select('amount')
-        .eq('assigned_to', user.id)
+        .eq('assigned_to', profile.id)
         .gte('period_end', new Date().toISOString().split('T')[0])
         .lte('period_start', new Date().toISOString().split('T')[0])
         .maybeSingle();
@@ -132,7 +152,7 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
       const { data: pipelineData } = await supabase
         .from('opportunities')
         .select('stage, amount')
-        .eq('is_active', true);
+        .eq('status', 'open');
 
       const stageMap = new Map<string, { count: number; value: number }>();
       pipelineData?.forEach(opp => {
@@ -149,7 +169,7 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
       const { count: totalOpps } = await supabase
         .from('opportunities')
         .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .eq('status', 'open');
 
       const conversionRate = totalOpps ? (dealsClosed / totalOpps) * 100 : 0;
 

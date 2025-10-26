@@ -100,6 +100,38 @@ export function SalesActivityTracker() {
         `).eq('created_by', user.id).order('scheduled_at', {
         ascending: false
       });
+
+      // Fallback to legacy table if v2 relation is missing
+      if (error && (error.code === '42P01' || (error.message || '').includes('sales_activity_v2'))) {
+        const { data: legacyData, error: legacyError } = await supabase
+          .from('sales_activity')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (legacyError) throw legacyError;
+
+        const mappedActivities: SalesActivity[] = (legacyData || []).map((activity: any) => ({
+          id: activity.id,
+          activity_type: activity.activity_type,
+          customer_id: activity.customer_id || '',
+          customer_name: activity.customer_name,
+          pic_id: undefined,
+          pic_name: undefined,
+          opportunity_id: undefined,
+          opportunity_name: undefined,
+          new_opportunity_name: undefined,
+          scheduled_at: activity.activity_time || activity.created_at,
+          status: 'done',
+          notes: activity.notes,
+          mom_text: undefined,
+          mom_added_at: undefined,
+          created_by: activity.user_id,
+          created_at: activity.created_at || activity.activity_time
+        }));
+        setActivities(mappedActivities);
+        return;
+      }
+
       if (error) throw error;
       const mappedActivities: SalesActivity[] = (data || []).map(activity => ({
         id: activity.id,
@@ -192,7 +224,7 @@ export function SalesActivityTracker() {
       const {
         data,
         error
-      } = await supabase.from('opportunities').select('id, name').eq('owner_id', user?.id).eq('is_active', true).order('name');
+      } = await supabase.from('opportunities').select('id, name').eq('owner_id', user?.id).eq('status', 'open').order('name');
       if (error) throw error;
       setOpportunities(data || []);
     } catch (error) {
