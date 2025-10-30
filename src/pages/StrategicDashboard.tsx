@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { RoleBadge } from "@/components/RoleBadge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,6 +10,13 @@ import { TeamAnalyticsOverview } from "@/components/dashboard/TeamAnalyticsOverv
 import { CalendarDays, RefreshCw } from "lucide-react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface Manager {
+  id: string;
+  name: string;
+}
 
 export default function StrategicDashboard() {
   const { profile } = useProfile();
@@ -17,21 +24,61 @@ export default function StrategicDashboard() {
   const [dateRange, setDateRange] = useState<string>("month");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("Q1 2026");
   const [refreshing, setRefreshing] = useState(false);
+  const [managers, setManagers] = useState<Manager[]>([{ id: "all", name: "All Managers" }]);
+  const [loadingManagers, setLoadingManagers] = useState(true);
+
+  // Fetch real managers from database
+  useEffect(() => {
+    const fetchManagers = async () => {
+      if (!profile) return;
+
+      try {
+        setLoadingManagers(true);
+        
+        let query = supabase
+          .from('user_profiles')
+          .select('id, full_name')
+          .eq('role', 'manager')
+          .eq('is_active', true);
+
+        // Filter by division if Head has division_id
+        if (profile.division_id) {
+          query = query.eq('division_id', profile.division_id);
+        } else if (profile.entity_id) {
+          // Fallback to entity_id if available
+          query = query.eq('entity_id', profile.entity_id);
+        }
+
+        const { data, error } = await query.order('full_name');
+
+        if (error) throw error;
+
+        const managerList: Manager[] = [
+          { id: "all", name: "All Managers" },
+          ...(data || []).map(m => ({ id: m.id, name: m.full_name }))
+        ];
+
+        setManagers(managerList);
+
+        if (data && data.length === 0) {
+          toast.info('No managers found in your division');
+        }
+      } catch (error) {
+        console.error('Error fetching managers:', error);
+        toast.error('Failed to load managers list');
+      } finally {
+        setLoadingManagers(false);
+      }
+    };
+
+    fetchManagers();
+  }, [profile]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     // Simulate refresh delay
     setTimeout(() => setRefreshing(false), 1000);
   };
-
-  // Mock manager data - in real app, this would come from API based on head level
-  const managers = [
-    { id: "all", name: "All Managers" },
-    { id: "sales", name: "Sales Manager" },
-    { id: "marketing", name: "Marketing Manager" },
-    { id: "operations", name: "Operations Manager" },
-    { id: "support", name: "Customer Support Manager" }
-  ];
 
   return (
     <div className="space-y-6">
