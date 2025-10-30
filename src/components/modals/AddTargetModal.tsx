@@ -93,6 +93,8 @@ export function AddTargetModal({
           ? "Manager"
           : am.role === "head"
           ? "Head"
+          : am.role === "staff"
+          ? "Staff"
           : "Account Manager";
       return {
         value: String(am.id),
@@ -178,7 +180,6 @@ export function AddTargetModal({
   };
 
   const onSubmit = async (data: TargetFormData) => {
-    console.log("Target data:", data);
 
     try {
       const result = await createTarget({

@@ -106,7 +106,7 @@ export default function ManagerDashboard() {
   const stageDistribution = [
     { name: 'Prospecting', value: opportunities.filter(o => o.stage === 'Prospecting').length, color: '#8884d8' },
     { name: 'Qualification', value: opportunities.filter(o => o.stage === 'Qualification').length, color: '#82ca9d' },
-    { name: 'Proposal', value: opportunities.filter(o => o.stage === 'Proposal / Negotiation').length, color: '#ffc658' },
+    { name: 'Proposal', value: opportunities.filter(o => o.stage === 'Negotiation').length, color: '#ffc658' },
     { name: 'Closed Won', value: opportunities.filter(o => o.stage === 'Closed Won').length, color: '#ff7300' },
   ];
 

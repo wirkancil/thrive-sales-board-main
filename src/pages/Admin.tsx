@@ -23,7 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useDivisions } from '@/hooks/useDivisions';
 import { DivisionDepartmentManagement } from '@/components/DivisionDepartmentManagement';
 
-type RoleFilter = 'all' | 'account_manager' | 'head' | 'manager' | 'admin' | 'pending';
+type RoleFilter = 'all' | 'account_manager' | 'staff' | 'head' | 'manager' | 'admin' | 'pending';
 
 interface UserUpdate {
   userId: string;
@@ -281,25 +281,48 @@ export default function Admin() {
     const user = users?.find(u => u.id === userId);
     const isAdminTarget = user?.role === 'admin';
     const isSelf = userId === profile?.id;
-    if (isAdminTarget || isSelf) return;
-    const confirmed = window.confirm('Delete this user? This action cannot be undone.');
+    
+    if (isAdminTarget) {
+      alert('Cannot delete admin users');
+      return;
+    }
+    
+    if (isSelf) {
+      alert('Cannot delete your own account');
+      return;
+    }
+    
+    const userName = user?.full_name || user?.email || 'this user';
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${userName}?\n\n` +
+      'This will:\n' +
+      '• Remove user profile\n' +
+      '• Delete all assigned targets\n' +
+      '• Remove team member mappings\n' +
+      '• Delete all activities\n\n' +
+      'This action cannot be undone.'
+    );
+    
     if (!confirmed) return;
+    
     setSavingUsers(prev => new Set([...prev, userId]));
-    const { error } = await deleteUser(userId);
+    const result = await deleteUser(userId);
     setSavingUsers(prev => {
       const next = new Set(prev);
       next.delete(userId);
       return next;
     });
-    if (error) {
-      console.error('Failed to delete user', error);
-      alert('Failed to delete user: ' + (error.message || 'Unknown error'));
+    
+    if (!result.success) {
+      console.error('Failed to delete user:', result.error);
+      alert('Failed to delete user: ' + (result.error || 'Unknown error'));
     } else {
       setUserUpdates(prev => {
         const updated = { ...prev };
         delete updated[userId];
         return updated;
       });
+      alert('User deleted successfully!\n\n' + (result.message || ''));
       refetch();
     }
   };
@@ -384,12 +407,13 @@ export default function Admin() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="pending">Pending Assignment</SelectItem>
-                  <SelectItem value="account_manager">Field Sales Staff</SelectItem>
-                  <SelectItem value="head">Level Head</SelectItem>
-                  <SelectItem value="manager">Level Manager</SelectItem>
-                  <SelectItem value="admin">System Administrator</SelectItem>
+          <SelectItem value="all">All Roles</SelectItem>
+          <SelectItem value="pending">Pending Assignment</SelectItem>
+          <SelectItem value="account_manager">Field Sales Staff</SelectItem>
+          <SelectItem value="staff">Staff</SelectItem>
+          <SelectItem value="head">Level Head</SelectItem>
+          <SelectItem value="manager">Level Manager</SelectItem>
+          <SelectItem value="admin">System Administrator</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -551,10 +575,11 @@ export default function Admin() {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className="max-w-[200px]">
-                                  <SelectItem value="account_manager">Field Sales Staff</SelectItem>
-                                  <SelectItem value="head">Level Head</SelectItem>
-                                  <SelectItem value="manager">Level Manager</SelectItem>
-                                  <SelectItem value="admin">System Administrator</SelectItem>
+          <SelectItem value="account_manager">Field Sales Staff</SelectItem>
+          <SelectItem value="staff">Staff</SelectItem>
+          <SelectItem value="head">Level Head</SelectItem>
+          <SelectItem value="manager">Level Manager</SelectItem>
+          <SelectItem value="admin">System Administrator</SelectItem>
                                 </SelectContent>
                               </Select>
                               {isUserDirty && (

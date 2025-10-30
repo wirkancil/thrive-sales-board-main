@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useSalesSummary } from "@/hooks/useSalesSummary";
 import { formatCurrency } from "@/lib/constants";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, TrendingUp, DollarSign, Target, Users } from "lucide-react";
+import { Download, TrendingUp, DollarSign, Target, Users, Percent } from "lucide-react";
 import { toast } from "sonner";
 import {
   BarChart,
@@ -36,14 +36,16 @@ export default function ManagerSalesSummary() {
       [''],
       ['Metric', 'Value'],
       ['Total Revenue', formatCurrency(metrics.totalRevenue, 'USD')],
+      ['Total Margin', formatCurrency(metrics.totalMargin, 'USD')],
+      ['Margin Percentage', `${metrics.marginPercentage.toFixed(1)}%`],
       ['Deals Closed', metrics.dealsClosed.toString()],
       ['Target Achievement', `${metrics.targetAchievement.toFixed(1)}%`],
       ['Average Deal Size', formatCurrency(metrics.averageDealSize, 'USD')],
       ['Conversion Rate', `${metrics.conversionRate.toFixed(1)}%`],
       [''],
       ['Top Performers'],
-      ['Name', 'Revenue', 'Deals'],
-      ...metrics.topPerformers.map(p => [p.name, formatCurrency(p.revenue, 'USD'), p.deals.toString()]),
+      ['Name', 'Revenue', 'Margin', 'Deals'],
+      ...metrics.topPerformers.map(p => [p.name, formatCurrency(p.revenue, 'USD'), formatCurrency(p.margin, 'USD'), p.deals.toString()]),
     ];
 
     const csv = csvData.map(row => row.join(',')).join('\n');
@@ -61,19 +63,19 @@ export default function ManagerSalesSummary() {
   };
 
   if (isLoading) {
-    return (
-      <CRMLayout>
-        <div className="space-y-6">
-          <Skeleton className="h-10 w-64" />
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-32" />
-            ))}
+      return (
+        <CRMLayout>
+          <div className="space-y-6">
+            <Skeleton className="h-10 w-64" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-32" />
+              ))}
+            </div>
           </div>
-        </div>
-      </CRMLayout>
-    );
-  }
+        </CRMLayout>
+      );
+    }
 
   return (
     <CRMLayout>
@@ -93,7 +95,7 @@ export default function ManagerSalesSummary() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -102,6 +104,30 @@ export default function ManagerSalesSummary() {
             <CardContent>
               <div className="text-2xl font-bold">
                 {formatCurrency(metrics?.totalRevenue || 0, 'USD')}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Margin</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {formatCurrency(metrics?.totalMargin || 0, 'USD')}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Margin %</CardTitle>
+              <Percent className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {metrics?.marginPercentage.toFixed(1)}%
               </div>
             </CardContent>
           </Card>
@@ -154,10 +180,10 @@ export default function ManagerSalesSummary() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Revenue Trend */}
+          {/* Revenue and Margin Trend */}
           <Card>
             <CardHeader>
-              <CardTitle>Revenue Trend</CardTitle>
+              <CardTitle>Revenue & Margin Trend</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -166,7 +192,8 @@ export default function ManagerSalesSummary() {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Line type="monotone" dataKey="revenue" stroke="#8884d8" />
+                  <Line type="monotone" dataKey="revenue" stroke="#8884d8" name="Revenue" />
+                  <Line type="monotone" dataKey="margin" stroke="#82ca9d" name="Margin" />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -204,7 +231,7 @@ export default function ManagerSalesSummary() {
         {/* Top Performers */}
         <Card>
           <CardHeader>
-            <CardTitle>Top Performers</CardTitle>
+            <CardTitle>Top Performers (Revenue & Margin)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -213,7 +240,8 @@ export default function ManagerSalesSummary() {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="revenue" fill="#8884d8" />
+                <Bar dataKey="revenue" fill="#8884d8" name="Revenue" />
+                <Bar dataKey="margin" fill="#82ca9d" name="Margin" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

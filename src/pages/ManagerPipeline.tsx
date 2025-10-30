@@ -156,6 +156,7 @@ export default function ManagerPipeline() {
         const { start, end } = getPeriodRange();
 
         // Determine assigned_to profile IDs to include
+        // For Manager Pipeline: show targets assigned to Account Managers (not Manager's own target)
         let assignedProfileIds: string[] = [];
         if (selectedAccountManager !== 'all') {
           const { data: single } = await supabase
@@ -165,10 +166,12 @@ export default function ManagerPipeline() {
             .maybeSingle();
           if (single?.id) assignedProfileIds = [single.id];
         } else if (profile.department_id) {
+          // Only get Account Managers, not Manager
           const { data: deptProfiles } = await supabase
             .from('user_profiles')
             .select('id')
-            .eq('department_id', profile.department_id);
+            .eq('department_id', profile.department_id)
+            .eq('role', 'account_manager');
           assignedProfileIds = (deptProfiles || []).map((p: any) => p.id).filter(Boolean);
         }
 
@@ -277,8 +280,8 @@ export default function ManagerPipeline() {
   // Group opportunities by stage
   const getOpportunitiesByStage = (stageName: string) => {
     return opportunities.filter(opp => {
-      if (stageName === "Proposal / Negotiation") {
-        return opp.stage === "Proposal / Negotiation";
+      if (stageName === "Proposal/Negotiation") {
+        return opp.stage === "Proposal/Negotiation";
       }
       if (stageName === "Closed Won") {
         return opp.stage === "Closed Won" || opp.status === "won";
@@ -533,14 +536,14 @@ export default function ManagerPipeline() {
 
       {/* Kanban Board */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {["Proposal / Negotiation", "Closed Won", "Closed Lost"].map(stageName => {
+        {["Proposal/Negotiation", "Closed Won", "Closed Lost"].map(stageName => {
           const stageOpportunities = getOpportunitiesByStage(stageName);
           const stageTotal = stageOpportunities.reduce((sum, opp) => sum + opp.amount, 0);
           const normalizeForRules = (name: string) => name.replace(/ \/? /g, "/");
           const points = STAGE_PERFORMANCE_RULES[normalizeForRules(stageName)]?.points ?? 0;
           const headerDetail = (() => {
             switch (stageName) {
-              case "Proposal / Negotiation":
+              case "Proposal/Negotiation":
                 return `Commercial terms sent, decision date/approvals path confirmed — earns ${points} points`;
               case "Closed Won":
                 return `Opportunity won — earns ${points} points`;

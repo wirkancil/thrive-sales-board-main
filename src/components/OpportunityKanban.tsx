@@ -16,10 +16,13 @@ import { MarkLostModal } from "@/components/modals/MarkLostModal";
 
 // Normalisasi nama stage agar konsisten dengan kunci OPPORTUNITY_STAGES
 const normalizeStageName = (name: string) => {
-  const trimmed = (name || '').trim();
+  const trimmed = name.trim();
   const lower = trimmed.toLowerCase();
-  if (lower === 'presentation/poc' || lower === 'presentation / poc') return 'Presentation / POC';
-  if (lower === 'approach/discovery') return 'Discovery';
+  if (lower === 'presentation/poc' || lower === 'presentation / poc') return 'Presentation/POC';
+  if (lower === 'approach/discovery' || lower === 'discovery') return 'Discovery';
+  if (lower === 'negotiation' || lower === 'proposal') return 'Negotiation';
+  if (lower === 'closed won' || lower === 'won') return 'Closed Won';
+  if (lower === 'closed lost' || lower === 'lost') return 'Closed Lost';
   return trimmed;
 };
 
@@ -43,7 +46,10 @@ const OPPORTUNITY_STAGES = [
   { key: 'Prospecting', name: 'Prospecting', color: 'bg-blue-500' },
   { key: 'Qualification', name: 'Qualification', color: 'bg-purple-500' },
   { key: 'Discovery', name: 'Discovery', color: 'bg-indigo-500' },
-  { key: 'Presentation / POC', name: 'Presentation / POC', color: 'bg-yellow-500' }
+  { key: 'Presentation/POC', name: 'Presentation/POC', color: 'bg-yellow-500' },
+  { key: 'Negotiation', name: 'Negotiation', color: 'bg-orange-500' },
+  { key: 'Closed Won', name: 'Closed Won', color: 'bg-green-500' },
+  { key: 'Closed Lost', name: 'Closed Lost', color: 'bg-red-500' }
 ];
 
 interface OpportunityKanbanProps {
@@ -70,14 +76,28 @@ export function OpportunityKanban({ userProfile, onRefresh }: OpportunityKanbanP
       let query = supabase
         .from('opportunities')
         .select(`
-          *,
+          id,
+          name,
+          description,
+          amount,
+          currency,
+          stage,
+          status,
+          probability,
+          forecast_category,
+          expected_close_date,
+          next_step_title,
+          next_step_due_date,
+          last_activity_at,
+          created_at,
+          owner_id,
+          customer_id,
           customer:organizations!customer_id(name),
           pipeline_stages!stage_id (
             name
           )
         `)
--        .eq('is_active', true);
-+        .eq('status', 'open');
+        .eq('status', 'open');
 
       // Role-based filtering
       if (userProfile.role === 'account_manager') {
@@ -86,24 +106,65 @@ export function OpportunityKanban({ userProfile, onRefresh }: OpportunityKanbanP
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database query error:', error);
+        throw error;
+      }
 
-      const mappedData: Opportunity[] = (data || []).map((opp: any) => ({
-        id: opp.id,
-        name: opp.name,
-        amount: opp.amount,
-        currency: opp.currency || 'USD',
-        // Utamakan kolom teks 'stage' agar fallback client-side terbaca
-        stage: normalizeStageName(opp.stage || opp.pipeline_stages?.name || 'Prospecting'),
-        next_step_title: opp.next_step_title,
-        next_step_due_date: opp.next_step_due_date,
-        expected_close_date: opp.expected_close_date,
-        last_activity_at: opp.last_activity_at,
-        probability: opp.probability || 0,
-        forecast_category: opp.forecast_category || 'Pipeline',
-        created_at: opp.created_at,
-        customer_name: opp.customer?.name
-      }));
+      // Debug logging for raw data
+       
+      // Debug individual opportunity names
+      data?.slice(0, 5).forEach((opp: any, index: number) => {
+          id: opp.id,
+          name: opp.name,
+          nameType: typeof opp.name,
+          nameLength: opp.name?.length,
+          isEmpty: !opp.name,
+          isNull: opp.name === null,
+          isUndefined: opp.name === undefined,
+          isEmptyString: opp.name === '',
+          rawObject: JSON.stringify(opp, null, 2)
+        });
+      });
+
+      const mappedData: Opportunity[] = (data || []).map((opp: any) => {
+        const mappedName = (opp.name && opp.name.trim()) ? opp.name.trim() : '[No Name]';
+        
+        // Debug each mapping
+          originalName: opp.name,
+          mappedName: mappedName,
+          condition1: opp.name && opp.name.trim(),
+          condition2: opp.name?.trim()
+        });
+        
+        return {
+          id: opp.id,
+          name: mappedName,
+          amount: opp.amount,
+          currency: opp.currency || 'USD',
+          // Utamakan kolom teks 'stage' agar fallback client-side terbaca
+          stage: normalizeStageName(opp.stage || opp.pipeline_stages?.name || 'Prospecting'),
+          next_step_title: opp.next_step_title,
+          next_step_due_date: opp.next_step_due_date,
+          expected_close_date: opp.expected_close_date,
+          last_activity_at: opp.last_activity_at,
+          probability: opp.probability || 0,
+          forecast_category: opp.forecast_category || 'Pipeline',
+          created_at: opp.created_at,
+          customer_name: opp.customer?.name
+        };
+      });
+
+      // Debug logging for mapped data
+      
+      // Debug individual mapped names
+      mappedData.slice(0, 5).forEach((opp: Opportunity, index: number) => {
+          id: opp.id,
+          name: opp.name,
+          originalName: data?.[index]?.name
+        });
+      });
+      
 
       setOpportunities(mappedData);
       onRefresh();
@@ -123,8 +184,8 @@ export function OpportunityKanban({ userProfile, onRefresh }: OpportunityKanbanP
           status: 'won',
           is_won: true,
           is_closed: true,
-          close_date: new Date().toISOString().split('T')[0],
-          probability: 1.0,
+          expected_close_date: new Date().toISOString().split('T')[0],
+          probability: 100,
           stage: 'Closed Won',
           updated_at: new Date().toISOString()
         })
@@ -239,7 +300,12 @@ export function OpportunityKanban({ userProfile, onRefresh }: OpportunityKanbanP
               opportunityName={opp.name}
               currentNextStep={opp.next_step_title}
               currentDueDate={opp.next_step_due_date}
-              onSuccess={fetchOpportunities}
+              onSuccess={() => {
+                // Add small delay to ensure database changes are committed
+                setTimeout(() => {
+                  fetchOpportunities();
+                }, 500);
+              }}
             />
           </div>
         </CardContent>

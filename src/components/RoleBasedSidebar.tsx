@@ -55,7 +55,6 @@ export const RoleBasedSidebar = ({
     try {
       await signOut();
     } catch (error) {
-      console.log('Logout completed (session may have been expired)');
     } finally {
       // Redirect without clearing arbitrary local storage
       if (onClose) onClose();

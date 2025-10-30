@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 type OpportunityStatus = "Hot" | "Warm" | "Cold";
-type OpportunityProgress = "Prospecting" | "Qualified" | "Approaching" | "Presentation / POC";
+type OpportunityProgress = "Prospecting" | "Qualified" | "Approaching" | "Presentation/POC";
 
 interface Opportunity {
   id: string;
@@ -325,7 +325,7 @@ export default function EditOpportunityModal({ isOpen, onClose, opportunity, onU
                 <SelectItem value="Prospecting">Prospecting</SelectItem>
                 <SelectItem value="Qualified">Qualified</SelectItem>
                 <SelectItem value="Approaching">Approaching</SelectItem>
-                <SelectItem value="Presentation / POC">Presentation / POC</SelectItem>
+                <SelectItem value="Presentation/POC">Presentation/POC</SelectItem>
               </SelectContent>
             </Select>
           </div>

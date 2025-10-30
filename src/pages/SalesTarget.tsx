@@ -146,9 +146,9 @@ function SalesTarget() {
 
         const { data: opps } = await supabase
           .from("opportunities")
-          .select("id, owner_id, amount, is_won, status, expected_close_date")
+          .select("id, owner_id, amount, is_won, status, stage, expected_close_date")
           .in("owner_id", ownerUserIds)
-          .eq("is_won", true)
+          .or("is_won.eq.true,stage.eq.Closed Won")
           .neq("status", "archived")
           .gte("expected_close_date", start)
           .lte("expected_close_date", end);
@@ -217,8 +217,8 @@ function SalesTarget() {
         setAchievedByProfileMargin(achievedByProfileMargin);
       } catch (e) {
         console.error("Error computing actuals:", e);
-        setAchievedTeamRevenue(0);
         setAchievedTeamMargin(0);
+        setAchievedTeamRevenue(0);
         setAchievedByProfileRevenue({});
         setAchievedByProfileMargin({});
       }
@@ -229,7 +229,7 @@ function SalesTarget() {
 
   // Calculate department metrics from real data (Margin Target)
   const departmentMetrics = React.useMemo(() => {
-    if (!targets || targets.length === 0) {
+    if (!targets || targets.length === 0 || !profile) {
       return {
         target: 0,
         achieved: 0,
@@ -237,9 +237,18 @@ function SalesTarget() {
       };
     }
 
-    const targetMargin = targets.filter(
-      (target) => target.measure === "margin"
-    );
+    // For Manager: only show their OWN target (from Head), not targets assigned to Account Managers
+    const targetMargin = targets.filter((target) => {
+      if (target.measure !== "margin") return false;
+      
+      // If user is Manager, only count targets assigned to Manager (not to Account Managers)
+      if (profile.role === "manager") {
+        return target.assigned_to === profile.id;
+      }
+      
+      // For others (Admin, Head, Account Manager), show all targets
+      return true;
+    });
 
     const totalTarget = targetMargin.reduce(
       (sum, target) => sum + Number(target.amount),
@@ -253,11 +262,11 @@ function SalesTarget() {
       achieved: achieved,
       gap: gap,
     };
-  }, [targets, achievedTeamMargin]);
+  }, [targets, achievedTeamMargin, profile]);
 
-  // Calculate department metrics from real data (Margin Target)
+  // Calculate department metrics from real data (Revenue Target)
   const departmentMetricsRevenue = React.useMemo(() => {
-    if (!targets || targets.length === 0) {
+    if (!targets || targets.length === 0 || !profile) {
       return {
         target: 0,
         achieved: 0,
@@ -265,9 +274,18 @@ function SalesTarget() {
       };
     }
 
-    const targetRevenue = targets.filter(
-      (target) => target.measure === "revenue"
-    );
+    // For Manager: only show their OWN target (from Head), not targets assigned to Account Managers
+    const targetRevenue = targets.filter((target) => {
+      if (target.measure !== "revenue") return false;
+      
+      // If user is Manager, only count targets assigned to Manager (not to Account Managers)
+      if (profile.role === "manager") {
+        return target.assigned_to === profile.id;
+      }
+      
+      // For others (Admin, Head, Account Manager), show all targets
+      return true;
+    });
 
     const totalTarget = targetRevenue.reduce(
       (sum, target) => sum + Number(target.amount),
@@ -281,7 +299,7 @@ function SalesTarget() {
       achieved: achieved,
       gap: gap,
     };
-  }, [targets, achievedTeamRevenue]);
+  }, [targets, achievedTeamRevenue, profile]);
 
   // Transform targets data for team performance chart (hierarchical)
   const amPerformanceData = React.useMemo(() => {

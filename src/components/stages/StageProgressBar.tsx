@@ -12,9 +12,9 @@ interface StageProgressBarProps {
 const STAGES = [
   { key: 'Prospecting', label: 'Prospecting', normalized: 'prospecting' },
   { key: 'Qualification', label: 'Qualification', normalized: 'qualification' },
-  { key: 'Discovery', label: 'Discovery', normalized: 'discovery' },
-  { key: 'Presentation / POC', label: 'Presentation', normalized: 'presentation' },
-  { key: 'Proposal / Negotiation', label: 'Proposal', normalized: 'proposal' },
+  { key: 'Approach/Discovery', label: 'Discovery', normalized: 'approachdiscovery' },
+  { key: 'Presentation/POC', label: 'Presentation', normalized: 'presentationpoc' },
+  { key: 'Proposal/Negotiation', label: 'Proposal', normalized: 'proposalnegotiation' },
   { key: 'Closed Won', label: 'Won', normalized: 'closedwon' },
 ];
 

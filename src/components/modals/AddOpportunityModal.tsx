@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 type OpportunityStatus = "Hot" | "Warm" | "Cold";
-type OpportunityProgress = "Prospecting" | "Qualification" | "Approaching" | "Presentation / POC";
+type OpportunityProgress = "Prospecting" | "Qualification" | "Approaching" | "Presentation/POC";
 interface NewOpportunity {
   name: string;
   description: string;
@@ -135,22 +135,21 @@ export default function AddOpportunityModal({
     }
   }, [isOpen]);
   const handleSubmit = async () => {
-    if (!newOpportunity.name) {
-      toast.error('Please fill in the Opportunity Name field');
+    if (!newOpportunity.name.trim()) {
+      toast.error('Opportunity name is required');
       return;
     }
+    
     if (!newOpportunity.customerId) {
-      toast.error('Please select a Customer');
+      toast.error('Please select a customer');
       return;
     }
-    if (!newOpportunity.product) {
-      toast.error('Please select a Product');
-      return;
-    }
+    
     if (!pipeline) {
       toast.error('Pipeline configuration not loaded. Please try again.');
       return;
     }
+    
     setLoading(true);
     try {
       const userId = (await supabase.auth.getUser()).data.user?.id!;
@@ -165,12 +164,12 @@ export default function AddOpportunityModal({
       const { data: opportunityData, error: oppError } = await supabase
         .from('opportunities')
         .insert({
-          name: newOpportunity.name,
+          name: newOpportunity.name.trim(),
           description: newOpportunity.description || null,
           product: newOpportunity.product || null,
           amount: amount || null,
           currency: newOpportunity.currency,
-          probability: 0.10,
+          probability: 10,
           expected_close_date: expectedCloseDate,
           customer_id: newOpportunity.customerId,
           end_user_id: newOpportunity.endUserId || newOpportunity.customerId,
@@ -195,9 +194,8 @@ export default function AddOpportunityModal({
           amount: amount,
           currency: newOpportunity.currency as any,
           status: 'negotiation',
-          probability: 0.10,
-          expected_close_date: expectedCloseDate,
-          created_by: userId
+          probability: 10,
+          expected_close_date: expectedCloseDate
         });
       
       if (pipelineItemError) throw pipelineItemError;

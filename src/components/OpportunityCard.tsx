@@ -7,7 +7,7 @@ import { useCurrencyFormatter } from "@/hooks/useCurrencyFormatter";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
-import AdvanceStageModal from "@/components/modals/AdvanceStageModal";
+import { NextStepModal } from "@/components/modals/NextStepModal";
 import LossReasonModal from "@/components/modals/LossReasonModal";
 import ActivityLogModal from "@/components/modals/ActivityLogModal";
 import { ConvertToProjectModal } from "@/components/modals/ConvertToProjectModal";
@@ -31,202 +31,7 @@ interface OpportunityCardProps {
   className?: string;
 }
 
-// Next Step Button Component
-const NextStepButton = ({ opportunityId, stage, onAdvance }: { opportunityId: string; stage?: string; onAdvance?: (opportunity: any) => void }) => {
-  const [loading, setLoading] = useState(false);
-  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
-  const [showLossModal, setShowLossModal] = useState(false);
-  const [showActivityModal, setShowActivityModal] = useState(false);
-  const [fullOpportunity, setFullOpportunity] = useState<any>(null);
 
-  const handleNextStep = async () => {
-    setLoading(true);
-    try {
-      // Fetch opportunity details with related data
-      const { data: oppData, error: oppError } = await supabase
-        .from('opportunities')
-        .select(`
-          *,
-          customer:organizations!customer_id(name),
-          current_stage:pipeline_stages!stage_id(name, sort_order),
-          pipeline:pipelines!pipeline_id(id, name)
-        `)
-        .eq('id', opportunityId)
-        .maybeSingle();
-
-      if (oppError) throw oppError;
-      
-      if (!oppData) {
-        toast.error('Opportunity not found');
-        return;
-      }
-
-      // Get all stages for the pipeline
-      const { data: stagesData, error: stagesError } = await supabase
-        .from('pipeline_stages')
-        .select('name, sort_order, is_won, is_lost')
-        .eq('pipeline_id', oppData.pipeline_id)
-        .eq('is_active', true)
-        .order('sort_order');
-
-      if (stagesError) throw stagesError;
-
-      // Get owner info separately
-      const { data: ownerData } = await supabase
-        .from('user_profiles')
-        .select('full_name')
-        .eq('id', oppData.owner_id)
-        .maybeSingle();
-
-      // Find next stage
-      const currentStage = oppData.current_stage;
-      const allStages = stagesData || [];
-      const nextStage = allStages.find((stage: any) => 
-        stage.sort_order === (currentStage?.sort_order || 0) + 1
-      );
-
-      if (!nextStage) {
-        toast.info('Opportunity is already at final stage');
-        return;
-      }
-
-      // Check if it's a closed stage
-      if (nextStage.is_won || nextStage.is_lost) {
-        // For lost stages, show loss reason modal
-        if (nextStage.is_lost) {
-          setShowLossModal(true);
-          return;
-        }
-        
-        // For won stages, advance directly
-        const { data, error } = await supabase.rpc('advance_opportunity_stage', {
-          opportunity_id: opportunityId
-        });
-
-        if (error) throw error;
-
-        if (data) {
-          toast.success('Opportunity won!');
-          onAdvance?.({ id: opportunityId });
-        }
-        return;
-      }
-
-      // Prepare opportunity data for modal
-      const modalOpportunity = {
-        id: oppData.id,
-        name: oppData.name,
-        amount: oppData.amount,
-        currency: oppData.currency,
-        customer_name: oppData.customer?.name,
-        expected_close_date: oppData.expected_close_date,
-        owner_name: ownerData?.full_name,
-        probability: oppData.probability,
-        current_stage: currentStage?.name,
-        next_stage: nextStage?.name,
-        stage_details: {
-          qualification: oppData.qualification_details,
-          approachDiscovery: oppData.approach_discovery_details,
-          presentationPoc: oppData.presentation_poc_details
-        }
-      };
-
-      setFullOpportunity(modalOpportunity);
-      setShowAdvanceModal(true);
-    } catch (error) {
-      console.error('Error preparing stage advancement:', error);
-      toast.error('Failed to load opportunity details');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleModalClose = () => {
-    setShowAdvanceModal(false);
-    setFullOpportunity(null);
-  };
-
-  const handleModalUpdate = () => {
-    onAdvance?.({ id: opportunityId });
-    handleModalClose();
-  };
-
-  const handleLossModalUpdate = () => {
-    onAdvance?.({ id: opportunityId });
-    setShowLossModal(false);
-  };
-
-  const handleActivityModalUpdate = () => {
-    // Just close the modal, no need to refresh the whole pipeline
-    setShowActivityModal(false);
-  };
-
-  return (
-    <>
-      <div className="flex gap-1">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="h-7 px-3 text-xs flex-1"
-          onClick={handleNextStep}
-          disabled={loading}
-        >
-          {loading ? 'Loading...' : (
-            <>
-              Next Step
-              <ChevronRight className="h-3 w-3 ml-1" />
-            </>
-          )}
-        </Button>
-        
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-          onClick={() => setShowActivityModal(true)}
-          title="Log Activity"
-        >
-          <Clock className="h-3 w-3" />
-        </Button>
-
-        {stage === 'Proposal/Negotiation' && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-            onClick={() => setShowLossModal(true)}
-            title="Mark as Lost"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        )}
-      </div>
-
-      <AdvanceStageModal
-        isOpen={showAdvanceModal}
-        onClose={handleModalClose}
-        opportunity={fullOpportunity}
-        onUpdate={handleModalUpdate}
-      />
-      
-      <LossReasonModal
-        isOpen={showLossModal}
-        onClose={() => setShowLossModal(false)}
-        opportunityId={opportunityId}
-        opportunityName={fullOpportunity?.name || 'Opportunity'}
-        onUpdate={handleLossModalUpdate}
-      />
-
-      <ActivityLogModal
-        isOpen={showActivityModal}
-        onClose={() => setShowActivityModal(false)}
-        opportunityId={opportunityId}
-        opportunityName={fullOpportunity?.name}
-        onActivityAdded={handleActivityModalUpdate}
-      />
-    </>
-  );
-};
 
 export const OpportunityCard = ({ opportunity, onEdit, className = "" }: OpportunityCardProps) => {
   const { formatCurrency } = useCurrencyFormatter();
@@ -239,11 +44,14 @@ export const OpportunityCard = ({ opportunity, onEdit, className = "" }: Opportu
   const [hasProject, setHasProject] = useState(false);
   
   // Debug logging
-  console.log('OpportunityCard:', {
+  console.log('OpportunityCard DEBUG:', {
     id: opportunity.id,
     name: opportunity.name,
+    nameType: typeof opportunity.name,
+    nameLength: opportunity.name ? opportunity.name.length : 0,
     stage: opportunity.stage,
-    isProspecting: opportunity.stage === 'Prospecting'
+    isProspecting: opportunity.stage === 'Prospecting',
+    fullOpportunity: opportunity
   });
   
   // Check if opportunity already has a project
@@ -276,7 +84,7 @@ export const OpportunityCard = ({ opportunity, onEdit, className = "" }: Opportu
           {/* Header with title and probability pill */}
           <div className="flex items-start justify-between">
             <h4 className="font-medium text-sm flex-1 mr-2">
-              {opportunity.name}
+              {opportunity.name?.trim() || '[No Name]'}
             </h4>
             <div className="flex items-center gap-1 flex-shrink-0">
               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
@@ -394,6 +202,12 @@ export const OpportunityCard = ({ opportunity, onEdit, className = "" }: Opportu
           }}
         />
       )}
+
+      <NextStepModal
+        opportunityId={opportunity.id}
+        opportunityName={opportunity.name}
+        onSuccess={() => onEdit?.(opportunity)}
+      />
     </Card>
   );
 };

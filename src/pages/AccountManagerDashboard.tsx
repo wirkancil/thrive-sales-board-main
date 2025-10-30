@@ -36,18 +36,18 @@ const AccountManagerDashboard: React.FC = () => {
       </Card>
 
       {/* Dashboard Grid */}
-      <div className="grid gap-6">
-        {/* Account Overview Row */}
+      <div className="space-y-6">
+        {/* Account Overview - Full Width */}
+        <AccountOverview />
+
+        {/* Pipeline and Activities Row */}
         <div className="grid gap-6 md:grid-cols-2">
-          <AccountOverview />
           <MyPipeline />
+          <MyActivities />
         </div>
 
-        {/* Activities and Calendar Row */}
-        <div className="grid gap-6 md:grid-cols-2">
-          <MyActivities />
-          <MyCalendar />
-        </div>
+        {/* Calendar - Full Width or in row */}
+        <MyCalendar />
       </div>
     </div>
   );

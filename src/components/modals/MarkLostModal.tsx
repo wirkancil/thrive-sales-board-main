@@ -51,6 +51,7 @@ export function MarkLostModal({
     'Pricing outside approval threshold'
   ];
 
+  // Fetch loss_reasons untuk memperkaya saran label; fallback ke daftar lokal
   useEffect(() => {
     if (open) {
       fetchLossReasons();
@@ -69,7 +70,7 @@ export function MarkLostModal({
       setLossReasons(data || []);
     } catch (error) {
       console.error('Error fetching loss reasons:', error);
-      toast.error('Failed to load loss reasons');
+      // Biarkan menggunakan FALLBACK_REASON_LABELS tanpa menampilkan error ke user
     }
   };
 
@@ -83,7 +84,7 @@ export function MarkLostModal({
         .update({ 
           status: 'lost',
           stage: 'Closed Lost',
-          close_date: new Date().toISOString().split('T')[0],
+          expected_close_date: new Date().toISOString().split('T')[0],
           // Keep the payload minimal to avoid generated columns issues
           updated_at: new Date().toISOString()
         })
@@ -95,8 +96,7 @@ export function MarkLostModal({
       const { error: pipelineError } = await supabase
         .from('pipeline_items')
         .update({ 
-          status: 'lost',
-          updated_at: new Date().toISOString()
+          status: 'lost'
         })
         .eq('opportunity_id', opportunityId);
 

@@ -19,6 +19,7 @@ export function useAdminUsers(query: string, roleFilter: string) {
         head: 'head',
         manager: 'manager',
         account_manager: 'account_manager',
+        staff: 'staff',
         pending: 'pending'
       };
       const p_role = roleMap[roleFilter] ?? null;
@@ -54,10 +55,8 @@ export function useAdminUsers(query: string, roleFilter: string) {
     divisionId?: string,
     departmentId?: string
   ) => {
-    console.log('🔧 updateUserProfile called with:', { userId, role, divisionId, departmentId });
     
     try {
-      console.log('🚀 Calling admin_update_profile RPC...');
       const { data: rpcResult, error: rpcError } = await supabase.rpc('admin_update_profile', {
         p_id: userId, // accepts profile_id or user_id (patched in SQL)
         p_role: role,
@@ -65,14 +64,12 @@ export function useAdminUsers(query: string, roleFilter: string) {
         p_department: departmentId || null
       });
 
-      console.log('📊 RPC Result:', { rpcResult, rpcError });
 
       if (rpcError) {
         console.error('❌ RPC Error:', rpcError);
         return { success: false, error: rpcError.message };
       }
 
-      console.log('✅ RPC call successful');
 
       // Optimistically update local state
       setUsers(prevUsers => 
@@ -88,10 +85,8 @@ export function useAdminUsers(query: string, roleFilter: string) {
         )
       );
 
-      console.log('🔄 Calling refetch to sync with database...');
       await refetch();
       
-      console.log('🎉 updateUserProfile completed successfully');
       return { success: true };
     } catch (error: any) {
       console.error('💥 Unexpected error in updateUserProfile:', error);
@@ -100,9 +95,27 @@ export function useAdminUsers(query: string, roleFilter: string) {
   };
 
   const deleteUser = async (userId: string) => {
-    const { error } = await (supabase as any).rpc('admin_delete_user', { p_id: userId });
-    if (!error) refetch();
-    return { success: !error, error };
+    try {
+      const { data, error } = await supabase.rpc('admin_delete_user', { p_id: userId });
+      
+      if (error) {
+        console.error('RPC error:', error);
+        return { success: false, error: error.message };
+      }
+
+      // RPC returns jsonb with {success, error?, message?}
+      if (data?.success === false) {
+        console.error('Delete failed:', data.error);
+        return { success: false, error: data.error };
+      }
+
+      // Success - refetch user list
+      refetch();
+      return { success: true, message: data?.message };
+    } catch (err: any) {
+      console.error('Unexpected error:', err);
+      return { success: false, error: err.message };
+    }
   };
 
   return { users, loading, refetch, updateUserProfile, deleteUser };

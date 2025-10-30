@@ -18,6 +18,7 @@ export function DepartmentPerformanceOverview({
   const [achievedByProfileRevenue, setAchievedByProfileRevenue] = useState<Record<string, number>>({});
   const [achievedByProfileMargin, setAchievedByProfileMargin] = useState<Record<string, number>>({});
 
+
   // Helper to get quarter date range from label like "Q3 2025"
   const getQuarterRange = (period: string) => {
     const m = period?.match(/Q([1-4])\s+(\d{4})/);
@@ -35,7 +36,7 @@ export function DepartmentPerformanceOverview({
   useEffect(() => {
     fetchAccountManagers();
     fetchTargets(selectedPeriod);
-  }, [selectedPeriod]);
+  }, [selectedPeriod, fetchAccountManagers, fetchTargets]);
 
   // Compute achieved revenue & margin from real won opportunities and pipeline costs
   useEffect(() => {
@@ -69,12 +70,12 @@ export function DepartmentPerformanceOverview({
           return;
         }
 
-        // Won opportunities within selected period
+        // Won opportunities within selected period - check both is_won and stage
         const { data: opps } = await supabase
           .from('opportunities')
-          .select('id, owner_id, amount, is_won, status, expected_close_date')
+          .select('id, owner_id, amount, is_won, status, stage, expected_close_date, created_at')
           .in('owner_id', ownerUserIds)
-          .eq('is_won', true)
+          .or('is_won.eq.true,stage.eq.Closed Won')
           .neq('status', 'archived')
           .gte('expected_close_date', start)
           .lte('expected_close_date', end);

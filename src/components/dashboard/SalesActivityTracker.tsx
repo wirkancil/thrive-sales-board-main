@@ -12,6 +12,7 @@ import { format, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
 interface SalesActivity {
   id: string;
   activity_type: "call" | "meeting_online" | "visit" | "go_show";
@@ -76,19 +77,61 @@ export function SalesActivityTracker() {
   const {
     user
   } = useAuth();
+  const { profile } = useProfile();
 
   // Load data on component mount
   useEffect(() => {
-    if (user) {
+    if (user && profile) {
       loadActivities();
       loadOrganizations();
       loadContacts();
       loadOpportunities();
     }
-  }, [user]);
+  }, [user, profile]);
   const loadActivities = async () => {
-    if (!user) return;
+    if (!user || !profile) return;
     try {
+      // Determine which user IDs to fetch activities for
+      let userIds = [user.id];
+
+      // If Manager, include team members
+      if (profile.role === 'manager') {
+        try {
+          // First try explicit team mapping
+          const { data: teamMembers } = await supabase
+            .from('manager_team_members')
+            .select('account_manager_id')
+            .eq('manager_id', profile.id);
+
+          if (teamMembers && teamMembers.length > 0) {
+            const amIds = teamMembers.map(m => m.account_manager_id);
+            const { data: amProfiles } = await supabase
+              .from('user_profiles')
+              .select('user_id')
+              .in('id', amIds);
+            
+            if (amProfiles && amProfiles.length > 0) {
+              const amUserIds = amProfiles.map(p => p.user_id).filter(Boolean);
+              userIds = [user.id, ...amUserIds];
+            }
+          } else if (profile.department_id) {
+            // Fallback to department-based team
+            const { data: deptMembers } = await supabase
+              .from('user_profiles')
+              .select('user_id')
+              .eq('department_id', profile.department_id)
+              .in('role', ['account_manager', 'staff']);
+            
+            if (deptMembers && deptMembers.length > 0) {
+              const deptUserIds = deptMembers.map(p => p.user_id).filter(Boolean);
+              userIds = [user.id, ...deptUserIds];
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching team members for activities:', err);
+        }
+      }
+
       const {
         data,
         error
@@ -97,7 +140,7 @@ export function SalesActivityTracker() {
           organizations!customer_id(name),
           organization_contacts!pic_id(full_name),
           opportunities!opportunity_id(name)
-        `).eq('created_by', user.id).order('scheduled_at', {
+        `).in('created_by', userIds).order('scheduled_at', {
         ascending: false
       });
 
@@ -106,7 +149,7 @@ export function SalesActivityTracker() {
         const { data: legacyData, error: legacyError } = await supabase
           .from('sales_activity')
           .select('*')
-          .eq('user_id', user.id)
+          .in('user_id', userIds)
           .order('created_at', { ascending: false });
         if (legacyError) throw legacyError;
 

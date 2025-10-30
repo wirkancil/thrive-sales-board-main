@@ -66,9 +66,9 @@ export default function AddPipelineModal({
       if (error) throw error;
       const formattedOpportunities = data.map(opp => ({
         id: opp.id,
-        name: opp.name,
+        name: opp.name || '[No Name]',
         amount: opp.amount || 0,
-        customer_name: opp.organizations?.name || 'Unknown'
+        customer_name: opp.organizations?.name || 'Unknown Customer'
       }));
       setOpportunities(formattedOpportunities);
     } catch (error) {
@@ -143,11 +143,11 @@ export default function AddPipelineModal({
         throw new Error('User not authenticated');
       }
 
-      // Update opportunity stage to "Proposal / Negotiation" directly
+      // Update opportunity stage to "Proposal/Negotiation" directly (match enum)
       const {
         error: opportunityUpdateError
       } = await supabase.from('opportunities').update({
-        stage: 'Proposal / Negotiation',
+        stage: 'Proposal/Negotiation',
         probability: 0.80,
         // Proposal/Negotiation probability
         updated_at: new Date().toISOString()
@@ -335,7 +335,7 @@ export default function AddPipelineModal({
               Pipeline Stage
             </Label>
             <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-              <span className="text-sm font-medium">Proposal / Negotiation</span>
+              <span className="text-sm font-medium">Proposal/Negotiation</span>
               <span className="text-xs text-muted-foreground">80% probability</span>
             </div>
             <p className="text-xs text-muted-foreground">

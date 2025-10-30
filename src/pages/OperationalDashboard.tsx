@@ -108,6 +108,28 @@ export default function OperationalDashboard() {
 
       {/* Main Dashboard Content */}
       <div className="space-y-8">
+        {/* Period Selector */}
+        <Card className="p-4">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium">Period:</label>
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Q1 2025">Q1 2025</SelectItem>
+                <SelectItem value="Q2 2025">Q2 2025</SelectItem>
+                <SelectItem value="Q3 2025">Q3 2025</SelectItem>
+                <SelectItem value="Q4 2025">Q4 2025</SelectItem>
+                <SelectItem value="Q1 2026">Q1 2026</SelectItem>
+                <SelectItem value="Q2 2026">Q2 2026</SelectItem>
+                <SelectItem value="Q3 2026">Q3 2026</SelectItem>
+                <SelectItem value="Q4 2026">Q4 2026</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </Card>
+
         {/* Team Performance Section */}
         <DepartmentPerformanceOverview 
           selectedPeriod={selectedPeriod}

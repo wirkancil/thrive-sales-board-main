@@ -40,12 +40,13 @@ export const useSalesTargets = () => {
     try {
       const currentUser = (await supabase.auth.getUser()).data.user;
       if (!currentUser) {
-        console.log("No authenticated user found");
         setAccountManagers([]);
         return;
       }
 
-      const { data: userProfile, error: profileError } = await supabase
+      // Cast the Supabase client to any here to prevent deep generic
+      // type instantiation on PostgREST builder chains
+      const { data: userProfile, error: profileError } = await (supabase as any)
         .from("user_profiles")
         .select("id, role, division_id, department_id")
         .eq("user_id", currentUser.id)
@@ -62,7 +63,6 @@ export const useSalesTargets = () => {
       }
 
       if (!userProfile) {
-        console.log("No user profile found");
         toast({
           title: "Warning",
           description:
@@ -75,18 +75,13 @@ export const useSalesTargets = () => {
 
       // Validate role and scope before proceeding
       if (userProfile.role === "manager") {
+        // Manager assigns targets to Account Managers (not to themselves)
+        // Manager receives targets from Head
         if (!userProfile.department_id) {
-          console.error(
-            "Department manager missing department_id:",
+          console.warn(
+            "Manager profile without department_id; will use explicit mapping or division scope",
             userProfile
           );
-          toast({
-            title: "Configuration Error",
-            description: "Your account is missing department assignment",
-            variant: "destructive",
-          });
-          setAccountManagers([]);
-          return;
         }
 
         // Try explicit team mapping first via manager_team_members
@@ -97,13 +92,7 @@ export const useSalesTargets = () => {
 
         if (teamErr) {
           console.error("Error fetching manager team mapping:", teamErr);
-          toast({
-            title: "Error",
-            description: "Failed to fetch your team mapping",
-            variant: "destructive",
-          });
-          setAccountManagers([]);
-          return;
+          // Don't fail completely, try other methods
         }
 
         const mappedAmIds = (teamMap || [])
@@ -111,182 +100,226 @@ export const useSalesTargets = () => {
           .filter(Boolean);
 
         if (mappedAmIds.length > 0) {
-          const { data: amData, error: amError } = await supabase
-            .from("user_profiles")
-            .select("id, full_name, role")
-            .in("id", mappedAmIds)
-            .eq("role", "account_manager")
-            .eq("is_active", true)
-            .not("email", "ilike", "demo_am_%@example.com")
-            .order("full_name");
+          // Use separate queries for roles to avoid TS generic recursion
+          const buildMapped = (role: string) => {
+            return (supabase as any)
+              .from("user_profiles")
+              .select("id, full_name, role")
+              .in("id", mappedAmIds)
+              .eq("is_active", true)
+              .not("email", "ilike", "demo_am_%@example.com")
+              .eq("role", role)
+              .order("full_name");
+          };
 
-          if (amError) {
+          const [{ data: am1, error: e1 }, { data: am2, error: e2 }] = await Promise.all([
+            buildMapped("account_manager"),
+            buildMapped("staff"),
+          ]);
+
+          const amError = e1 ?? e2;
+          const amData = [...(am1 ?? []), ...(am2 ?? [])] as any[];
+
+          if (amError != null) {
             console.error("Error fetching mapped account managers:", amError);
-            toast({
-              title: "Error",
-              description: "Failed to fetch your mapped account managers",
-              variant: "destructive",
-            });
-            setAccountManagers([]);
-            return;
+            // Continue to fallback methods
+          } else if (amData.length > 0) {
+            setAccountManagers(
+              amData as Array<{ id: string; full_name: string; role?: string }>
+            );
+            return; // Do not fallback if explicit mapping exists and has data
           }
-
-          console.log("Mapped AM count:", (amData || []).length);
-
-          setAccountManagers(
-            (amData || []) as Array<{ id: string; full_name: string; role?: string }>
-          );
-          return; // Do not fallback if explicit mapping exists
         }
 
         // Second preference: direct manager_id relationship mapping
-        const { data: mgrLinkedAms, error: mgrLinkedErr } = await supabase
-          .from("user_profiles")
-          .select("id, full_name, role")
-          .eq("manager_id", (userProfile as any).id)
-          .eq("role", "account_manager")
-          .eq("is_active", true)
-          .not("email", "ilike", "demo_am_%@example.com")
-          .order("full_name");
+        // Fetch both AMs and staff directly linked by manager_id
+        const buildMgrLinked = (role: string) => {
+          return (supabase as any)
+            .from("user_profiles")
+            .select("id, full_name, role")
+            .eq("manager_id", (userProfile as any).id)
+            .eq("is_active", true)
+            .not("email", "ilike", "demo_am_%@example.com")
+            .eq("role", role)
+            .order("full_name");
+        };
 
-        if (mgrLinkedErr) {
+        const [{ data: mgr1, error: err1 }, { data: mgr2, error: err2 }] = await Promise.all([
+          buildMgrLinked("account_manager"),
+          buildMgrLinked("staff"),
+        ]);
+
+        const mgrLinkedErr = err1 ?? err2;
+        const mgrLinkedAms = [...(mgr1 ?? []), ...(mgr2 ?? [])] as any[];
+
+        if (mgrLinkedErr != null) {
           console.error("Error fetching manager_id-linked account managers:", mgrLinkedErr);
-          toast({
-            title: "Error",
-            description: "Failed to fetch your direct account managers",
-            variant: "destructive",
-          });
-          setAccountManagers([]);
-          return;
-        }
-
-        if (mgrLinkedAms && mgrLinkedAms.length > 0) {
-          console.log("Direct AM by manager_id count:", mgrLinkedAms.length);
+          // Continue to next fallback
+        } else if (mgrLinkedAms.length > 0) {
           setAccountManagers(
             mgrLinkedAms as { id: string; full_name: string; role?: string }[]
           );
           return;
         }
 
-        // Fallback to department-based active Account Managers
-        const { data: amData, error: amError } = await supabase
-          .from("user_profiles")
-          .select("id, full_name, role")
-          .eq("department_id", (userProfile as any).department_id)
-          .eq("role", "account_manager")
-          .eq("is_active", true)
-          .not("email", "ilike", "demo_am_%@example.com")
-          .order("full_name");
-
-        if (amError) {
-          console.error("Error fetching account managers:", amError);
-          toast({
-            title: "Error",
-            description: "Failed to fetch account managers for your department",
-            variant: "destructive",
-          });
-          setAccountManagers([]);
-          return;
-        }
-
-        if (!amData || amData.length === 0) {
-          // Last-resort: broaden search to division or global to avoid empty dropdown
-          let broadQuery: any = supabase
+        // Fallback to scoped active team members: prefer department, else division
+        // Scoped by department (prefer) or division, and include both AMs and staff
+        const buildScoped = (role: string) => {
+          let qb: any = (supabase as any)
             .from("user_profiles")
             .select("id, full_name, role")
-            .eq("role", "account_manager")
-            .eq("is_active", true);
-
-          if ((userProfile as any).division_id) {
-            broadQuery = broadQuery.eq("division_id", (userProfile as any).division_id);
+            .eq("is_active", true)
+            .not("email", "ilike", "demo_am_%@example.com")
+            .eq("role", role);
+          if ((userProfile as any).department_id) {
+            qb = qb.eq("department_id", (userProfile as any).department_id);
+          } else if ((userProfile as any).division_id) {
+            qb = qb.eq("division_id", (userProfile as any).division_id);
           }
-          broadQuery = broadQuery.not("email", "ilike", "demo_am_%@example.com");
+          return qb.order("full_name");
+        };
 
-          const { data: fallbackData, error: fallbackErr } = await broadQuery.order("full_name");
+        const [{ data: scopedAm, error: scopedErr1 }, { data: scopedStaff, error: scopedErr2 }] =
+          await Promise.all([
+            buildScoped("account_manager"),
+            buildScoped("staff"),
+          ]);
 
-          if (fallbackErr) {
-            console.error("Error fetching fallback account managers:", fallbackErr);
-            toast({
-              title: "No Data",
-              description: "No active account managers found in your department",
-            });
-            setAccountManagers([]);
-            return;
-          }
+        const amError = scopedErr1 ?? scopedErr2;
+        const amData = [...(scopedAm ?? []), ...(scopedStaff ?? [])] as any[];
 
-          if (!fallbackData || fallbackData.length === 0) {
-            // New ultra-fallback: drop is_active filter to ensure real data surfaces
-            let ultraQuery: any = supabase
-              .from("user_profiles")
-              .select("id, full_name, role")
-              .eq("role", "account_manager");
-
-            if ((userProfile as any).department_id) {
-              ultraQuery = ultraQuery.eq("department_id", (userProfile as any).department_id);
-            } else if ((userProfile as any).division_id) {
-              ultraQuery = ultraQuery.eq("division_id", (userProfile as any).division_id);
-            }
-            ultraQuery = ultraQuery.not("email", "ilike", "demo_am_%@example.com");
-
-            const { data: ultraData, error: ultraErr } = await ultraQuery.order("full_name");
-
-            if (ultraErr) {
-              console.error("Error fetching ultra fallback account managers:", ultraErr);
-              toast({
-                title: "No Data",
-                description: "No account managers found in your scope",
-              });
-              setAccountManagers([]);
-              return;
-            }
-
-            if (!ultraData || ultraData.length === 0) {
-              // Global ultra-fallback without is_active filter
-              const { data: globalUltra, error: globalUltraErr } = await supabase
-                .from("user_profiles")
-                .select("id, full_name, role")
-                .eq("role", "account_manager")
-                .not("email", "ilike", "demo_am_%@example.com")
-                .order("full_name");
-
-              if (globalUltraErr) {
-                console.error("Error fetching global ultra fallback:", globalUltraErr);
-                setAccountManagers([]);
-                return;
-              }
-
-              console.log("Global ultra AM count:", (globalUltra || []).length);
-              setAccountManagers(
-                (globalUltra || []) as { id: string; full_name: string; role?: string }[]
-              );
-              return;
-            }
-
-            console.log("Ultra fallback AM count:", (ultraData || []).length);
-            setAccountManagers(
-              (ultraData || []) as { id: string; full_name: string; role?: string }[]
-            );
-            return;
-          }
-
-          toast({
-            title: "Showing all active Account Managers",
-            description: "Please configure your team/department to narrow selection.",
-          });
-
-          console.log("Fallback active AM count:", (fallbackData || []).length);
-
+        if (amError != null) {
+          console.error("Error fetching account managers:", amError);
+          // Continue to broader fallback
+        } else if (amData && amData.length > 0) {
           setAccountManagers(
-            fallbackData as { id: string; full_name: string; role?: string }[]
+            amData as Array<{ id: string; full_name: string; role?: string }>
           );
           return;
         }
 
-        console.log("Department active AM count:", (amData || []).length);
+        // If we reach here, no account managers found in department/division
+        if (true) {
+          // Last-resort: broaden search to division or global to avoid empty dropdown
+          const buildBroad = (role: string) => {
+            let qb: any = (supabase as any)
+              .from("user_profiles")
+              .select("id, full_name, role")
+              .eq("is_active", true)
+              .eq("role", role);
+            if ((userProfile as any).division_id) {
+              qb = qb.eq("division_id", (userProfile as any).division_id);
+            }
+            return qb.not("email", "ilike", "demo_am_%@example.com").order("full_name");
+          };
 
-        setAccountManagers(
-          amData as Array<{ id: string; full_name: string; role?: string }>
-        );
+          const [{ data: fb1, error: fe1 }, { data: fb2, error: fe2 }] = await Promise.all([
+            buildBroad("account_manager"),
+            buildBroad("staff"),
+          ]);
+
+        const fallbackErr = fe1 ?? fe2;
+        const fallbackData = [...(fb1 ?? []), ...(fb2 ?? [])] as any[];
+
+          if (fallbackErr != null) {
+            console.error("Error fetching fallback account managers:", fallbackErr);
+            // Continue to ultra fallback
+          } else if (fallbackData && fallbackData.length > 0) {
+            toast({
+              title: "Showing division Account Managers",
+              description: "No Account Managers found in your department",
+            });
+            setAccountManagers(
+              fallbackData as { id: string; full_name: string; role?: string }[]
+            );
+            return;
+          }
+
+          if (true) {
+            // New ultra-fallback: drop is_active filter to ensure real data surfaces
+            const buildUltra = (role: string) => {
+              let qb: any = (supabase as any)
+                .from("user_profiles")
+                .select("id, full_name, role")
+                .eq("role", role);
+              if ((userProfile as any).department_id) {
+                qb = qb.eq("department_id", (userProfile as any).department_id);
+              } else if ((userProfile as any).division_id) {
+                qb = qb.eq("division_id", (userProfile as any).division_id);
+              }
+              return qb.not("email", "ilike", "demo_am_%@example.com").order("full_name");
+            };
+
+            const [{ data: u1, error: ue1 }, { data: u2, error: ue2 }] = await Promise.all([
+              buildUltra("account_manager"),
+              buildUltra("staff"),
+            ]);
+
+            const ultraErr = ue1 ?? ue2;
+            const ultraData = [...(u1 ?? []), ...(u2 ?? [])] as any[];
+
+            if (ultraErr != null) {
+              console.error("Error fetching ultra fallback account managers:", ultraErr);
+              // Continue to global fallback
+            } else if (ultraData && ultraData.length > 0) {
+              setAccountManagers(
+                ultraData as { id: string; full_name: string; role?: string }[]
+              );
+              return;
+            }
+
+            if (true) {
+              // Global ultra-fallback without is_active filter
+              // Final dev-rescue fallback: include demo emails and inactive users
+              const [{ data: g1, error: ge1 }, { data: g2, error: ge2 }] = await Promise.all([
+                (supabase as any)
+                  .from("user_profiles")
+                  .select("id, full_name, role")
+                  .eq("role", "account_manager")
+                  .order("full_name"),
+                (supabase as any)
+                  .from("user_profiles")
+                  .select("id, full_name, role")
+                  .eq("role", "staff")
+                  .order("full_name"),
+              ]);
+
+              const globalUltraErr = ge1 ?? ge2;
+              const globalUltra = [...(g1 ?? []), ...(g2 ?? [])] as any[];
+
+              if (globalUltraErr != null) {
+                console.error("Error fetching global ultra fallback:", globalUltraErr);
+                toast({
+                  title: "No Account Managers Found",
+                  description: "Please add Account Managers to your department first",
+                  variant: "destructive",
+                });
+                setAccountManagers([]);
+                return;
+              }
+
+              if (globalUltra && globalUltra.length > 0) {
+                toast({
+                  title: "Showing all Account Managers",
+                  description: "Please configure your team/department",
+                });
+                setAccountManagers(
+                  globalUltra as { id: string; full_name: string; role?: string }[]
+                );
+                return;
+              }
+
+              // Absolutely no account managers found
+              toast({
+                title: "No Account Managers Found",
+                description: "Please add Account Managers to the system first",
+                variant: "destructive",
+              });
+              setAccountManagers([]);
+              return;
+            }
+          }
+        }
       } else if (userProfile.role === "head") {
         if (!userProfile.division_id) {
           console.error("Division head missing division_id:", userProfile);
@@ -299,13 +332,13 @@ export const useSalesTargets = () => {
           return;
         }
 
-        const { data: amData, error: amError } = await supabase
+        const { data: amData, error: amError } = await (supabase as any)
           .from("user_profiles")
           .select("id, full_name, role")
           .eq("division_id", userProfile.division_id)
-          .in("role", ["account_manager", "manager"])
           .eq("is_active", true)
           .not("email", "ilike", "demo_am_%@example.com")
+          .or("role.eq.manager,role.eq.account_manager,role.eq.staff") // include staff under head
           .order("role", { ascending: false })
           .order("full_name");
 
@@ -329,19 +362,18 @@ export const useSalesTargets = () => {
           return;
         }
 
-        console.log("Head division team count:", (amData || []).length);
 
         setAccountManagers(
           amData as Array<{ id: string; full_name: string; role?: string }>
         );
       } else if (userProfile.role === "admin") {
         // Admins can see all account managers
-        const { data: amData, error: amError } = await supabase
+        const { data: amData, error: amError } = await (supabase as any)
           .from("user_profiles")
           .select("id, full_name, role")
-          .in("role", ["account_manager", "manager", "head"])
           .eq("is_active", true)
           .not("email", "ilike", "demo_am_%@example.com")
+          .or("role.eq.head,role.eq.manager,role.eq.account_manager,role.eq.staff") // include staff for admin view
           .order("role", { ascending: false })
           .order("full_name");
 
@@ -356,9 +388,12 @@ export const useSalesTargets = () => {
           return;
         }
 
-        console.log("Admin visible team count:", (amData || []).length);
 
         setAccountManagers(amData || []);
+      } else if (userProfile.role === "account_manager" || userProfile.role === "staff") {
+        // Account managers and staff receive targets from their Manager
+        // They should not be able to create their own targets
+        setAccountManagers([]);
       } else {
         setAccountManagers([]);
       }
@@ -386,11 +421,11 @@ export const useSalesTargets = () => {
         throw new Error("User not authenticated");
       }
 
-      const { data: userProfile, error: profileError } = (await supabase
+      const { data: userProfile, error: profileError } = await (supabase as any)
         .from("user_profiles")
         .select("id, role, division_id, department_id")
         .eq("user_id", currentUser.id)
-        .maybeSingle()) as any;
+        .maybeSingle();
 
       if (profileError) {
         console.error("Profile fetch error:", profileError);
@@ -406,16 +441,17 @@ export const useSalesTargets = () => {
       let query = supabase.from("sales_targets").select(baseQuery);
 
       if (userProfile.role === "admin") {
-        console.log("Admin access - showing all targets");
         // Admin sees all targets
       } else if (userProfile.role === "manager") {
-        if (!userProfile.department_id) {
-          console.error("Manager missing department_id:", userProfile);
-          throw new Error("Manager account is missing department assignment");
+        // Manager sees targets in their department; if missing, fall back to division
+        if (userProfile.department_id) {
+          query = query.eq("department_id", userProfile.department_id);
+        } else if (userProfile.division_id) {
+          query = query.eq("division_id", userProfile.division_id);
+        } else {
+          console.warn("Manager profile missing department_id and division_id; showing own targets");
+          query = query.eq("assigned_to", (userProfile as any).id);
         }
-
-        // Manager sees targets in their department
-        query = query.eq("department_id", userProfile.department_id);
       } else if (userProfile.role === "head") {
         if (!userProfile.division_id) {
           console.error("Head missing division_id:", userProfile);
@@ -425,7 +461,6 @@ export const useSalesTargets = () => {
         // Head sees targets in their division
         query = query.eq("division_id", userProfile.division_id);
       } else {
-        console.log("Individual access - showing own targets only");
         // Others see only their own targets
         query = query.eq("assigned_to", (userProfile as any).id);
       }
@@ -520,7 +555,7 @@ export const useSalesTargets = () => {
 
       // Get current user's profile for division_id
       const { data: currentUserProfile, error: currentProfileError } =
-        await supabase
+        await (supabase as any)
           .from("user_profiles")
           .select("division_id, department_id")
           .eq("user_id", currentUser.id)

@@ -17,19 +17,21 @@ import { formatCurrency } from "@/lib/constants";
 type StageText =
   | 'Prospecting'
   | 'Qualification'
-  | 'Approach/Discovery'
+  | 'Discovery'
   | 'Presentation/POC'
-  | 'Proposal/Negotiation'
+  | 'Negotiation'
   | 'Closed Won'
   | 'Closed Lost';
 
 // Bentuk literal yang dipakai kolom DB (memakai spasi di sekitar '/')
+// Nilai literal yang digunakan kolom enum di DB (stage_enum)
+// Per enum saat ini: menggunakan 'Approach/Discovery' dan 'Proposal/Negotiation'
 type DbStageText =
   | 'Prospecting'
   | 'Qualification'
   | 'Approach/Discovery'
-  | 'Presentation / POC'
-  | 'Proposal / Negotiation'
+  | 'Presentation/POC'
+  | 'Proposal/Negotiation'
   | 'Closed Won'
   | 'Closed Lost';
 
@@ -42,18 +44,21 @@ const normalizeStageName = (name: string): StageText => {
     case 'qualification':
       return 'Qualification';
     case 'discovery':
-      return 'Approach/Discovery';
     case 'approach/discovery':
-      return 'Approach/Discovery';
+      return 'Discovery';
     case 'presentation/poc':
     case 'presentation / poc':
       return 'Presentation/POC';
+    case 'negotiation':
     case 'proposal/negotiation':
     case 'proposal / negotiation':
-      return 'Proposal/Negotiation';
+    case 'proposal':
+      return 'Negotiation';
     case 'closed won':
+    case 'won':
       return 'Closed Won';
     case 'closed lost':
+    case 'lost':
       return 'Closed Lost';
     default:
       return 'Prospecting';
@@ -63,17 +68,17 @@ const normalizeStageName = (name: string): StageText => {
 // Konversi nama kanonik ke literal DB
 const toDbStageLiteral = (stage: StageText): DbStageText => {
   switch (stage) {
-    case 'Presentation/POC':
-      return 'Presentation / POC';
-    case 'Proposal/Negotiation':
-      return 'Proposal / Negotiation';
+    case 'Discovery':
+      return 'Approach/Discovery';
+    case 'Negotiation':
+      return 'Proposal/Negotiation';
     default:
       return stage as DbStageText;
   }
 };
 
 // Urutan sederhana untuk Next Step
-const STAGE_ORDER: StageText[] = ['Qualification', 'Approach/Discovery', 'Presentation/POC'];
+const STAGE_ORDER: StageText[] = ['Prospecting', 'Qualification', 'Discovery', 'Presentation/POC', 'Negotiation'];
 
 interface NextStepModalProps {
   opportunityId: string;
@@ -95,6 +100,8 @@ interface OpportunityDetails {
   qualification_details?: string | null;
   approach_discovery_details?: string | null;
   presentation_poc_details?: string | null;
+  prospecting_details?: string | null;
+  negotiation_details?: string | null;
 }
 
 export function NextStepModal({ 
@@ -133,6 +140,11 @@ export function NextStepModal({
 
       if (error) throw error;
 
+      // Supabase generated types may not yet include newly added columns
+      // like prospecting_details and negotiation_details. Use a safe cast
+      // to access these optional fields without TypeScript errors.
+      const row: any = data as any;
+
       setOpportunityDetails({
         id: data.id,
         name: data.name,
@@ -144,7 +156,9 @@ export function NextStepModal({
         customer_name: data.customer?.name,
         qualification_details: data.qualification_details || null,
         approach_discovery_details: data.approach_discovery_details || null,
-        presentation_poc_details: data.presentation_poc_details || null
+        presentation_poc_details: data.presentation_poc_details || null,
+        prospecting_details: row?.prospecting_details ?? null,
+        negotiation_details: row?.negotiation_details ?? null
       });
     } catch (error) {
       console.error('Error fetching opportunity details:', error);
@@ -165,7 +179,7 @@ export function NextStepModal({
           'Budget & timeline confirmed',
           'Buying roles identified'
         ];
-      case 'Approach/Discovery':
+      case 'Discovery':
         return [
           'Decision process mapped',
           'Decision criteria set',
@@ -177,7 +191,7 @@ export function NextStepModal({
           'Success metrics agreed',
           'Readout scheduled'
         ];
-      case 'Proposal/Negotiation':
+      case 'Negotiation':
         return [
           'Proposal sent',
           'Confirm decision date',
@@ -194,11 +208,11 @@ export function NextStepModal({
         return 'e.g., Need; Budget/Timeline; Buying Roles Known';
       case 'Qualification':
         return 'e.g., Confirm need; budget & timeline; buying roles known';
-      case 'Approach/Discovery':
+      case 'Discovery':
         return 'e.g., Decision process/criteria mapped; champion identified';
       case 'Presentation/POC':
         return 'e.g., Demo/POC done; success metrics agreed; readout scheduled';
-      case 'Proposal/Negotiation':
+      case 'Negotiation':
         return 'e.g., Proposal sent; decision date; terms discussed';
       default:
         return 'Enter stage-specific details';
@@ -206,19 +220,19 @@ export function NextStepModal({
   };
 
   // Tentukan stage berikutnya untuk tampilan UI pada Next Step
-  const getNextStageForUI = (current: StageText): StageText => {
-    if (current === 'Presentation/POC') {
-      return 'Proposal/Negotiation';
-    }
-    const idx = STAGE_ORDER.indexOf(current);
-    return idx >= 0 && idx < STAGE_ORDER.length - 1
-      ? STAGE_ORDER[idx + 1]
-      : 'Qualification';
-  };
+const getNextStageForUI = (current: StageText): StageText => {
+  // Khusus: dari Presentation/POC lanjut ke Negotiation
+  if (current === 'Presentation/POC') return 'Negotiation';
+  // Di Negotiation tidak ada next stage; tetap tampilkan placeholder Negotiation
+  if (current === 'Negotiation') return 'Negotiation';
+  const idx = STAGE_ORDER.indexOf(current);
+  return idx >= 0 && idx < STAGE_ORDER.length - 1
+    ? STAGE_ORDER[idx + 1]
+    : 'Qualification';
+};
 
   // Bangun label tampilan untuk stage berikutnya (gunakan "Discovery" untuk Approach/Discovery)
   const getDisplayLabelForNextStage = (next: StageText): string => {
-    if (next === 'Approach/Discovery') return 'Discovery Details';
     return `${next} Details`;
   };
 
@@ -252,129 +266,307 @@ export function NextStepModal({
 
       // Create activity record
       // Buat activity dengan due_at hanya bila due date dipilih
-      const activityPayload: any = {
-        opportunity_id: opportunityId,
-        subject: `Next Step: ${nextStepTitle || opportunityDetails?.stage || 'Stage'}`,
-        description: detailsToSave,
-        status: 'open',
-        created_by: (await supabase.auth.getUser()).data.user?.id
-      };
-      if (dueDateISO) {
-        activityPayload.due_at = dueDateISO;
-      }
-
-      const { error: activityError } = await supabase
-        .from('activities')
-        .insert(activityPayload);
-
-      if (activityError) throw activityError;
-
-      let advanced = false;
-      // Sederhanakan: langsung update kolom teks stage berdasarkan urutan tetap
       try {
-        const currentStageRaw = opportunityDetails?.stage || 'Qualification';
-        const currentStage = normalizeStageName(currentStageRaw);
-        let nextStageText: StageText;
-        if (currentStage === 'Presentation/POC') {
-          // Advance sederhana: dari POC ke Proposal/Negotiation
-          nextStageText = 'Proposal/Negotiation';
-        } else {
-          const idx = STAGE_ORDER.indexOf(currentStage);
-          nextStageText = idx >= 0 && idx < STAGE_ORDER.length - 1
-            ? STAGE_ORDER[idx + 1]
-            : 'Qualification';
+        const activityPayload: any = {
+          activity_type: 'next_step', // Required field - set default value
+          opportunity_id: opportunityId,
+          subject: `Next Step: ${nextStepTitle || opportunityDetails?.stage || 'Stage'}`,
+          description: detailsToSave,
+          status: 'open',
+          created_by: (await supabase.auth.getUser()).data.user?.id
+        };
+        if (dueDateISO) {
+          activityPayload.due_at = dueDateISO;
         }
 
-        const updateTextPayload: any = {
-          stage: toDbStageLiteral(nextStageText),
-          updated_at: new Date().toISOString()
-        };
-        // Gabungkan detail baru ke detail yang sudah ada agar tidak menimpa
-        const appendDetailsText = (existing: string | null | undefined, incoming: string) => {
-          const cleanIncoming = incoming.trim();
-          const base = (existing || '').trim();
-          if (!cleanIncoming) return base;
-          if (!base) return cleanIncoming;
-          // Hindari duplikasi sederhana
-          if (base.includes(cleanIncoming)) return base;
-          return `${base}\n${cleanIncoming}`;
-        };
+        // Coba insert dengan due_at jika tersedia; jika kolom due_at belum ada, fallback ke scheduled_at
+        let { error: activityError } = await (supabase as any)
+          .from('sales_activities')
+          .insert(activityPayload);
 
-        if (nextStageText === 'Qualification') {
-          updateTextPayload.qualification_details = appendDetailsText(opportunityDetails?.qualification_details, detailsToSave);
-        } else if (nextStageText === 'Approach/Discovery') {
-          updateTextPayload.approach_discovery_details = appendDetailsText(opportunityDetails?.approach_discovery_details, detailsToSave);
-        } else if (nextStageText === 'Presentation/POC') {
-          updateTextPayload.presentation_poc_details = appendDetailsText(opportunityDetails?.presentation_poc_details, detailsToSave);
-        }
-
-        const { error: updateErr } = await supabase
-          .from('opportunities')
-          .update(updateTextPayload)
-          .eq('id', opportunityId);
-
-        if (!updateErr) {
-          advanced = true;
-        } else {
-          console.warn('Simple text stage update error:', updateErr.message);
-          // Fallback minimal: coba update stage_id ke next stage berdasarkan pipeline
-          try {
-            const { data: oppInfo } = await supabase
-              .from('opportunities')
-              .select('stage_id, pipeline_id')
-              .eq('id', opportunityId)
-              .maybeSingle();
-
-            if (oppInfo?.pipeline_id) {
-              // Kandidat nama stage (gunakan literal DB agar cocok dengan tipe Supabase)
-              const namesForMatch: string[] = (() => {
-                switch (nextStageText) {
-                  case 'Approach/Discovery':
-                    return ['Approach/Discovery', 'Discovery'];
-                  case 'Presentation/POC':
-                    return ['Presentation / POC'];
-                  case 'Proposal/Negotiation':
-                    return ['Proposal / Negotiation'];
-                  default:
-                    return [toDbStageLiteral(nextStageText)];
-                }
-              })();
-
-              const { data: nextStageRow } = await supabase
-                .from('pipeline_stages')
-                .select('id, name, default_probability')
-                .eq('pipeline_id', oppInfo.pipeline_id)
-                .in('name', namesForMatch)
-                .order('sort_order')
-                .maybeSingle();
-
-              if (nextStageRow?.id) {
-                const { error: upd2 } = await supabase
-                  .from('opportunities')
-                  .update({
-                    stage_id: nextStageRow.id,
-                    stage: toDbStageLiteral(normalizeStageName(nextStageRow.name)),
-                    probability: nextStageRow.default_probability,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', opportunityId);
-                if (!upd2) {
-                  advanced = true;
+        if (activityError) {
+          const msg = (activityError as any)?.message || '';
+          const code = (activityError as any)?.code || '';
+          // Jika PostgREST mengeluh kolom due_at tidak ditemukan, ulangi tanpa due_at dan gunakan scheduled_at
+          if (code === 'PGRST204' || msg.toLowerCase().includes('due_at') || msg.toLowerCase().includes('schema cache')) {
+            try {
+              if (dueDateISO) {
+                // Pindahkan nilai due_at ke scheduled_at dan hapus due_at
+                delete activityPayload.due_at;
+                activityPayload.scheduled_at = dueDateISO;
+              }
+              // Ensure activity_type is still set after payload modification
+              activityPayload.activity_type = 'next_step';
+              const { error: retryError } = await (supabase as any)
+                .from('sales_activities')
+                .insert(activityPayload);
+              if (retryError) {
+                const retryMsg = (retryError as any)?.message || '';
+                const retryCode = (retryError as any)?.code || '';
+                if (retryCode === '42501' || retryMsg.toLowerCase().includes('row-level security') || retryMsg.toLowerCase().includes('policy')) {
+                  console.warn('Activity insert blocked by RLS after retry, skipping activity log:', retryMsg || retryCode);
                 } else {
-                  console.warn('Fallback stage_id update error:', upd2.message);
+                  console.warn('Activity insert failed after retry, skipping activity log:', retryMsg || retryCode);
                 }
               }
+            } catch (retryEx) {
+              const retryExMsg = (retryEx as any)?.message || '';
+              const retryExCode = (retryEx as any)?.code || '';
+              if (retryExCode === '42501' || retryExMsg.toLowerCase().includes('row-level security') || retryExMsg.toLowerCase().includes('policy')) {
+                console.warn('Activity insert blocked by RLS in retry catch, skipping activity log:', retryExMsg || retryExCode);
+              } else {
+                console.warn('Activity insert exception after retry, skipping activity log:', retryExMsg || retryExCode);
+              }
             }
-          } catch (fbEx: any) {
-            console.warn('Fallback minimal exception:', fbEx?.message || fbEx);
+          } else if (
+            code === '42501' ||
+            msg.toLowerCase().includes('row-level security') ||
+            msg.toLowerCase().includes('policy')
+          ) {
+            // RLS menolak insert ke sales_activities; lewati pencatatan activity agar Next Step tetap tersimpan
+            console.warn('Activity insert blocked by RLS, skipping activity log:', msg || code);
+          } else {
+            // Jangan hentikan alur advance stage bila activity gagal; log lalu lanjut
+            console.warn('Activity insert failed, skipping activity log:', msg || code);
+          }
+        }
+      } catch (activityCatchError) {
+        // Tangkap semua error activity dan skip jika RLS
+        const catchMsg = (activityCatchError as any)?.message || '';
+        const catchCode = (activityCatchError as any)?.code || '';
+        if (catchCode === '42501' || catchMsg.toLowerCase().includes('row-level security') || catchMsg.toLowerCase().includes('policy')) {
+          console.warn('Activity insert completely blocked by RLS, skipping activity log:', catchMsg || catchCode);
+        } else {
+          // Jangan hentikan alur advance stage; log lalu lanjut
+          console.warn('Activity insert errored, skipping activity log:', catchMsg || catchCode);
+        }
+      }
+
+      let advanced = false;
+      // Stage advancement logic - move to next stage atau tutup di Negotiation
+      try {
+        const currentStageRaw = opportunityDetails?.stage || 'Prospecting';
+        const currentStage = normalizeStageName(currentStageRaw);
+        
+        console.log('=== STAGE ADVANCEMENT DEBUG ===');
+        console.log('Current stage raw:', currentStageRaw);
+        console.log('Current stage normalized:', currentStage);
+        
+        // Jika sudah di Negotiation, tidak ada next step — langsung tutup ke Closed Won/Lost
+          if (currentStage === 'Negotiation') {
+            const finalStage: StageText = finalOutcome;
+            const finalUpdatePayload: any = {
+              stage: finalStage, // literal sama di DB
+              status: finalStage === 'Closed Won' ? 'won' : 'lost',
+              is_won: finalStage === 'Closed Won',
+              is_closed: true,
+              expected_close_date: new Date().toISOString().split('T')[0],
+              updated_at: new Date().toISOString(),
+            };
+
+          // Hindari mengirim kolom detail stage yang mungkin tidak ada di DB (negotiation_details)
+
+          // Default probabilitas jika tidak ada default di pipeline_stages
+          const fallbackProb = finalStage === 'Closed Won' ? 100 : 0;
+
+          try {
+            let stageData: any = null;
+            const { data: canonicalStage } = await supabase
+              .from('pipeline_stages')
+              .select('id, default_probability')
+              .eq('name', finalStage)
+              .maybeSingle();
+            if (canonicalStage?.id) {
+              stageData = canonicalStage;
+            } else {
+              const { data: legacyStage } = await supabase
+                .from('pipeline_stages')
+                .select('id, default_probability')
+                .eq('name', toDbStageLiteral(finalStage))
+                .maybeSingle();
+              if (legacyStage?.id) stageData = legacyStage;
+            }
+            if (stageData?.id) {
+              finalUpdatePayload.stage_id = stageData.id;
+              if (stageData.default_probability !== null && stageData.default_probability !== undefined) {
+                finalUpdatePayload.probability = stageData.default_probability;
+              } else {
+                finalUpdatePayload.probability = fallbackProb;
+              }
+            } else {
+              finalUpdatePayload.probability = fallbackProb;
+            }
+          } catch (finalStageIdErr) {
+            console.warn('Could not fetch final stage_id:', finalStageIdErr);
+            finalUpdatePayload.probability = fallbackProb;
+          }
+
+          const { error: finalErr } = await supabase
+            .from('opportunities')
+            .update(finalUpdatePayload)
+            .eq('id', opportunityId);
+
+          if (!finalErr) {
+            advanced = true;
+            console.log('Negotiation closed to', finalStage);
+            // Catat activity ringan (optional). Abaikan jika RLS menolak.
+            try {
+              await (supabase as any)
+                .from('sales_activities')
+                .insert({
+                  activity_type: 'closure',
+                  opportunity_id: opportunityId,
+                  subject: `Opportunity ${finalStage === 'Closed Won' ? 'Won' : 'Lost'}`,
+                  description: `Finalized at Negotiation: ${finalStage}`,
+                  status: 'done',
+                  created_by: (await supabase.auth.getUser()).data.user?.id
+                });
+            } catch (closureActErr: any) {
+              const msg = closureActErr?.message || '';
+              if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('policy')) {
+                console.warn('Closure activity blocked by RLS, skip log.');
+              } else {
+                console.warn('Closure activity insert failed:', msg);
+              }
+            }
+          } else {
+            console.warn('Finalization update failed:', finalErr.message);
+          }
+        } else {
+          // Alur normal: lanjut ke stage berikutnya
+          let nextStageText: StageText;
+          if (currentStage === 'Presentation/POC') {
+            nextStageText = 'Negotiation';
+          } else {
+            const idx = STAGE_ORDER.indexOf(currentStage);
+            nextStageText = idx >= 0 && idx < STAGE_ORDER.length - 1
+              ? STAGE_ORDER[idx + 1]
+              : 'Qualification';
+          }
+
+          console.log('Next stage text:', nextStageText);
+          console.log('Stage order index:', STAGE_ORDER.indexOf(currentStage));
+
+          // Get probability for next stage
+          const stageToProb: Record<StageText, number> = {
+            // Selaras dengan tampilan Pipeline: 10,10,20,20,20
+            'Prospecting': 10,
+            'Qualification': 10,
+            'Discovery': 20,
+            'Presentation/POC': 20,
+            'Negotiation': 20,
+            'Closed Won': 100,
+            'Closed Lost': 0
+          };
+
+          const updateTextPayload: any = {
+            stage: toDbStageLiteral(nextStageText),
+            probability: stageToProb[nextStageText] || 20,
+            updated_at: new Date().toISOString()
+          };
+
+          console.log('Update payload:', updateTextPayload);
+
+          // Note: intentionally not appending stage detail fields here to avoid
+          // Bad Request errors when remote DB lacks these optional columns.
+
+          // First try to update with stage_id lookup
+          let stageUpdateSuccess = false;
+
+          // Try to get the stage_id for proper database consistency
+          try {
+            // Coba cari berdasarkan nama kanonik terlebih dahulu (Discovery/Negotiation)
+            let stageData: any = null;
+            const { data: canonicalStage } = await supabase
+              .from('pipeline_stages')
+              .select('id, default_probability')
+              .eq('name', nextStageText)
+              .maybeSingle();
+
+            if (canonicalStage?.id) {
+              stageData = canonicalStage;
+            } else {
+              // Fallback: cari berdasarkan literal enum di DB (Approach/Discovery, Proposal/Negotiation)
+              const { data: legacyStage } = await supabase
+                .from('pipeline_stages')
+                .select('id, default_probability')
+                .eq('name', toDbStageLiteral(nextStageText))
+                .maybeSingle();
+              if (legacyStage?.id) {
+                stageData = legacyStage;
+              }
+            }
+
+            if (stageData?.id) {
+              updateTextPayload.stage_id = stageData.id;
+              if (stageData.default_probability !== null && stageData.default_probability !== undefined) {
+                updateTextPayload.probability = stageData.default_probability;
+              }
+            }
+          } catch (stageIdError) {
+            console.warn('Could not fetch stage_id, proceeding with text update only:', stageIdError);
+          }
+
+          const { error: updateErr } = await supabase
+            .from('opportunities')
+            .update(updateTextPayload)
+            .eq('id', opportunityId);
+
+          console.log('Stage update error:', updateErr);
+
+          if (!updateErr) {
+            advanced = true;
+            console.log('Stage advancement successful!');
+          } else {
+            console.warn('Stage update failed:', updateErr.message);
+            // Try fallback approach dengan stage_id lookup
+            try {
+              const { data: oppInfo } = await supabase
+                .from('opportunities')
+                .select('stage_id, pipeline_id')
+                .eq('id', opportunityId)
+                .maybeSingle();
+
+              if (oppInfo?.pipeline_id) {
+                // Look for matching stage in pipeline
+                const { data: nextStageRow } = await supabase
+                  .from('pipeline_stages')
+                  .select('id, name, default_probability')
+                  .eq('pipeline_id', oppInfo.pipeline_id)
+                  .eq('name', toDbStageLiteral(nextStageText))
+                  .maybeSingle();
+
+                if (nextStageRow?.id) {
+                  const { error: fallbackError } = await supabase
+                    .from('opportunities')
+                    .update({
+                      stage_id: nextStageRow.id,
+                      stage: toDbStageLiteral(nextStageText),
+                      probability: nextStageRow.default_probability || stageToProb[nextStageText] || 20,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', opportunityId);
+                    
+                  if (!fallbackError) {
+                    advanced = true;
+                    console.log('Fallback stage advancement successful!');
+                  } else {
+                    console.warn('Fallback stage update also failed:', fallbackError.message);
+                  }
+                }
+              }
+            } catch (fallbackEx: any) {
+              console.warn('Fallback stage update exception:', fallbackEx?.message || fallbackEx);
+            }
           }
         }
       } catch (advanceEx: any) {
-        console.warn('Simple stage advance exception:', advanceEx?.message || advanceEx);
+        console.warn('Stage advancement exception:', advanceEx?.message || advanceEx);
       }
 
+      // Show success message and close modal
       toast.success(advanced 
-        ? "Next step saved — stage advanced"
+        ? "Next step saved and stage advanced successfully!"
         : "Next step saved");
       setOpen(false);
       onSuccess();
@@ -407,8 +599,8 @@ export function NextStepModal({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="text-xs">
-          <Target className="w-3 h-3 mr-1" />
+        <Button variant="outline" size="sm" className="text-xs">
+          <Target className="h-3 w-3 mr-1" />
           Next Step
         </Button>
       </DialogTrigger>
@@ -455,10 +647,20 @@ export function NextStepModal({
           {/* Stage History - tampilkan akumulasi detail dari stage sebelumnya */}
           {opportunityDetails && (
             <div className="space-y-3">
-              {(opportunityDetails.qualification_details || opportunityDetails.approach_discovery_details || opportunityDetails.presentation_poc_details) && (
+              {(opportunityDetails.qualification_details || opportunityDetails.approach_discovery_details || opportunityDetails.presentation_poc_details || opportunityDetails.prospecting_details || opportunityDetails.negotiation_details) && (
                 <div className="space-y-2">
                   <Label className="text-sm">Stage History</Label>
                   <div className="space-y-2">
+                    {opportunityDetails.prospecting_details && (
+                      <div className="border rounded p-2 bg-muted/20">
+                        <div className="text-xs font-medium mb-1">Prospecting Details</div>
+                        <div className="text-sm bg-white p-2 rounded border space-y-1">
+                          {opportunityDetails.prospecting_details.split(/\r?\n/).map((item, idx) => (
+                            item.trim() ? <div key={`p-${idx}`}>{item.trim()}</div> : null
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {opportunityDetails.qualification_details && (
                       <div className="border rounded p-2 bg-muted/20">
                         <div className="text-xs font-medium mb-1">Qualification Details</div>
@@ -489,6 +691,16 @@ export function NextStepModal({
                         </div>
                       </div>
                     )}
+                    {opportunityDetails.negotiation_details && (
+                      <div className="border rounded p-2 bg-muted/20">
+                        <div className="text-xs font-medium mb-1">Negotiation Details</div>
+                        <div className="text-sm bg-white p-2 rounded border space-y-1">
+                          {opportunityDetails.negotiation_details.split(/\r?\n/).map((item, idx) => (
+                            item.trim() ? <div key={`n-${idx}`}>{item.trim()}</div> : null
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -512,8 +724,8 @@ export function NextStepModal({
           />
           </div>
 
-          {/* Final Outcome (muncul hanya di Presentation/POC) */}
-          {normalizeStageName(opportunityDetails?.stage || '') === 'Presentation/POC' && (
+          {/* Final Outcome (muncul di Negotiation) */}
+          {normalizeStageName(opportunityDetails?.stage || '') === 'Negotiation' && (
             <div className="space-y-2">
               <Label className="text-sm">Final Result</Label>
               <div className="flex gap-2">

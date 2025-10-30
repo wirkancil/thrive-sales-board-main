@@ -43,11 +43,12 @@ export default function ManagerForecasting() {
     const fetchTarget = async () => {
       if (!profile) return;
       try {
-        // Determine team profiles by department
+        // Determine team profiles by department (Account Managers only, not Manager)
         const { data: deptProfiles, error: profErr } = await supabase
           .from('user_profiles')
           .select('id')
-          .eq('department_id', profile.department_id);
+          .eq('department_id', profile.department_id)
+          .eq('role', 'account_manager');
         if (profErr) throw profErr;
         const assignedProfileIds = (deptProfiles || []).map((p: any) => p.id).filter(Boolean);
         if (assignedProfileIds.length === 0) {

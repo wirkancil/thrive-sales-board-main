@@ -57,9 +57,9 @@ interface PipelineItem {
 const PIPELINE_STAGES = [
   { key: 'Prospecting', name: 'Prospecting (10%)', color: 'bg-slate-500', description: 'Initial contact and research', points: 10 },
   { key: 'Qualification', name: 'Qualification (10%)', color: 'bg-blue-500', description: 'Needs assessment and qualification', points: 10 },
-  { key: 'Approach/Discovery', name: 'Discovery (20%)', color: 'bg-cyan-500', description: 'Discovery and solution mapping', points: 20 },
-  { key: 'Presentation/POC', name: 'Presentation/POC (20%)', color: 'bg-indigo-500', description: 'Solution presentation and proof of concept', points: 20 },
-  { key: 'Proposal/Negotiation', name: 'Proposal/Negotiation (20%)', color: 'bg-purple-500', description: 'Commercial terms sent, decision date confirmed', points: 20 },
+  { key: 'Discovery', name: 'Discovery (20%)', color: 'bg-cyan-500', description: 'Discovery and solution mapping', points: 20 },
+  { key: 'Presentation/POC', name: 'Presentation/POC (20%)', color: 'bg-indigo-500', description: 'Proof of concept and presentation', points: 20 },
+  { key: 'Negotiation', name: 'Negotiation (20%)', color: 'bg-purple-500', description: 'Commercial terms sent, decision date confirmed', points: 20 },
   { key: 'Closed Won', name: 'Closed Won (20)', color: 'bg-green-500', description: 'Opportunity won - earns 20 points', points: 20 },
   { key: 'Closed Lost', name: 'Closed Lost (0)', color: 'bg-red-500', description: 'Opportunity lost - earns 0 points', points: 0 }
 ];
@@ -119,18 +119,32 @@ export default function Pipeline() {
         (metricsData || []).map((m: any) => [m.id, m])
       );
 
+      // Fallback: fetch opportunity core fields directly by IDs to avoid missing nested join data
+      const { data: oppFallbackData } = await supabase
+        .from('opportunities')
+        .select('id, name, stage, stage_entered_at, next_step_title, next_step_due_date')
+        .in('id', opportunityIds);
+      const namesMap = new Map((oppFallbackData || []).map((n: any) => [n.id, n.name]));
+      const stagesMap = new Map((oppFallbackData || []).map((n: any) => [n.id, n.stage]));
+      const stageEnteredAtMap = new Map((oppFallbackData || []).map((n: any) => [n.id, n.stage_entered_at]));
+      const nextStepTitleMap = new Map((oppFallbackData || []).map((n: any) => [n.id, n.next_step_title]));
+      const nextStepDueDateMap = new Map((oppFallbackData || []).map((n: any) => [n.id, n.next_step_due_date]));
+
       const mappedData: PipelineItem[] = (data || []).map((item: any) => {
         const metrics = metricsMap.get(item.opportunity_id);
+        const rawName: string | undefined = item.opportunity?.name;
+        const fallbackName: string | undefined = namesMap.get(item.opportunity_id);
+        const normalizedName = (rawName?.trim() || fallbackName?.trim() || '[No Name]');
         return {
           id: item.id,
-          opportunity_name: item.opportunity?.name || 'Unknown',
-          customer_name: item.opportunity?.customer?.name || 'Unknown',
+          opportunity_name: normalizedName,
+          customer_name: item.opportunity?.customer?.name || 'Unknown Customer',
           amount: item.amount,
           currency: item.currency || 'IDR',
           status: item.status || 'negotiation',
           expected_close_date: item.expected_close_date,
-          next_step_title: item.opportunity?.next_step_title || null,
-          next_step_due_date: item.opportunity?.next_step_due_date || null,
+          next_step_title: item.opportunity?.next_step_title ?? nextStepTitleMap.get(item.opportunity_id) ?? null,
+          next_step_due_date: item.opportunity?.next_step_due_date ?? nextStepDueDateMap.get(item.opportunity_id) ?? null,
           probability: item.probability || 0,
           created_at: item.created_at,
           opportunity_id: item.opportunity_id,
@@ -138,9 +152,9 @@ export default function Pipeline() {
           cost_of_goods: item.cost_of_goods,
           service_costs: item.service_costs,
           other_expenses: item.other_expenses,
-          // Gunakan field teks stage untuk kesederhanaan, lalu normalisasi ke key
-          stage: normalizeStageName(item.opportunity?.stage || 'Prospecting'),
-          stage_entered_at: item.opportunity?.stage_entered_at || null,
+          // Gunakan field teks stage untuk kesederhanaan, lalu normalisasi ke key (fallback ke data langsung dari opportunities)
+          stage: normalizeStageName(item.opportunity?.stage ?? stagesMap.get(item.opportunity_id) ?? 'Prospecting'),
+          stage_entered_at: item.opportunity?.stage_entered_at ?? stageEnteredAtMap.get(item.opportunity_id) ?? null,
           days_in_stage: metrics?.days_in_stage || 0,
           is_overdue: metrics?.is_overdue || false
         };
@@ -163,8 +177,8 @@ export default function Pipeline() {
         .update({ 
           status: 'won',
           stage: 'Closed Won',
-          close_date: new Date().toISOString().split('T')[0],
-          probability: 1.0,
+          expected_close_date: new Date().toISOString().split('T')[0],
+          probability: 100,
           updated_at: new Date().toISOString()
         })
         .eq('id', opportunityId);
@@ -175,8 +189,7 @@ export default function Pipeline() {
       const { error: pipelineError } = await supabase
         .from('pipeline_items')
         .update({ 
-          status: 'won',
-          updated_at: new Date().toISOString()
+          status: 'won'
         })
         .eq('opportunity_id', opportunityId);
 
@@ -355,8 +368,8 @@ export default function Pipeline() {
             </div>
           )}
 
-          {/* Inline Actions - Only show Won/Lost buttons in Proposal/Negotiation stage */}
-          {stage === 'Proposal/Negotiation' && (
+          {/* Inline Actions - Only show Won/Lost buttons in Negotiation stage */}
+          {stage === 'Negotiation' && (
             <div className="flex gap-2">
               <Button 
                 size="sm" 
@@ -602,13 +615,14 @@ const normalizeStageName = (name: string) => {
       return 'Qualification';
     case 'discovery':
     case 'approach/discovery':
-      return 'Approach/Discovery';
+      return 'Discovery';
     case 'presentation / poc':
     case 'presentation/poc':
       return 'Presentation/POC';
     case 'proposal / negotiation':
     case 'proposal/negotiation':
-      return 'Proposal/Negotiation';
+    case 'negotiation':
+      return 'Negotiation';
     case 'closed won':
       return 'Closed Won';
     case 'closed lost':

@@ -5,6 +5,8 @@ import { useProfile } from "./useProfile";
 
 export interface SalesSummaryMetrics {
   totalRevenue: number;
+  totalMargin: number;
+  marginPercentage: number;
   dealsClosed: number;
   targetAchievement: number;
   averageDealSize: number;
@@ -13,11 +15,13 @@ export interface SalesSummaryMetrics {
     id: string;
     name: string;
     revenue: number;
+    margin: number;
     deals: number;
   }>;
   revenueByMonth: Array<{
     month: string;
     revenue: number;
+    margin: number;
     deals: number;
   }>;
   pipelineByStage: Array<{
@@ -51,7 +55,8 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
           currency,
           created_at,
           owner_id,
-          user_profiles!opportunities_owner_id_fkey(full_name)
+          user_profiles!opportunities_owner_id_fkey(full_name),
+          pipeline_items(cost_of_goods, service_costs, other_expenses)
         `)
         .eq('is_won', true);
 
@@ -82,19 +87,37 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
           query = query.in('owner_id', ownerUserIds);
         }
       } else if (profile.role === 'head') {
-        // Get all opportunities in entity - only if entity_id exists
-        if (profile.entity_id) {
+        // Get all opportunities in division (prioritize division_id, fallback to entity_id)
+        let divisionUserIds: string[] = [];
+
+        if (profile.division_id) {
+          // First try division_id (preferred)
+          const { data: divisionMembers } = await supabase
+            .from('user_profiles')
+            .select('user_id')
+            .eq('division_id', profile.division_id)
+            .eq('is_active', true);
+
+          if (divisionMembers && divisionMembers.length > 0) {
+            divisionUserIds = divisionMembers.map(m => m.user_id).filter(Boolean);
+          }
+        } else if (profile.entity_id) {
+          // Fallback to entity_id if no division_id
           const { data: entityMembers } = await supabase
             .from('user_profiles')
-            .select('id')
-            .eq('entity_id', profile.entity_id);
+            .select('user_id')
+            .eq('entity_id', profile.entity_id)
+            .eq('is_active', true);
 
           if (entityMembers && entityMembers.length > 0) {
-            const entityIds = entityMembers.map(m => m.id);
-            query = query.in('owner_id', entityIds);
+            divisionUserIds = entityMembers.map(m => m.user_id).filter(Boolean);
           }
+        }
+
+        if (divisionUserIds.length > 0) {
+          query = query.in('owner_id', divisionUserIds);
         } else {
-          // If no entity_id, fallback to just the current user
+          // If no division or entity, fallback to just the current user
           query = query.eq('owner_id', user.id);
         }
       }
@@ -102,8 +125,47 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
       const { data: wonOpps, error } = await query;
       if (error) throw error;
 
-      // Calculate metrics
-      const totalRevenue = wonOpps?.reduce((sum, opp) => sum + (opp.amount || 0), 0) || 0;
+      // Use projects (PO) for revenue when available, fallback to won opportunities amount
+      const wonOppIds = (wonOpps || []).map((o: any) => o.id);
+      let totalRevenue = 0;
+      let totalMargin = 0;
+      try {
+        const { data: projects, error: projErr } = await supabase
+          .from('projects')
+          .select('opportunity_id, po_amount')
+          .in('opportunity_id', wonOppIds);
+        if (projErr) throw projErr;
+        const projList = projects || [];
+        if (projList.length > 0) {
+          totalRevenue = projList.reduce((sum: number, p: any) => sum + (Number(p.po_amount) || 0), 0);
+          const projectOppIds = projList.map((p: any) => p.opportunity_id).filter(Boolean);
+          const { data: pipeItems, error: pipeErr } = await supabase
+            .from('pipeline_items')
+            .select('opportunity_id, cost_of_goods, service_costs, other_expenses, status')
+            .in('opportunity_id', projectOppIds)
+            .eq('status', 'won');
+          if (pipeErr) throw pipeErr;
+          const wonPipeItems = pipeItems || [];
+          const totalCosts = wonPipeItems.reduce((sum: number, item: any) => {
+            const cogs = Number(item.cost_of_goods) || 0;
+            const svc = Number(item.service_costs) || 0;
+            const other = Number(item.other_expenses) || 0;
+            return sum + cogs + svc + other;
+          }, 0);
+          totalMargin = totalCosts > 0 ? (totalRevenue - totalCosts) : 0;
+        } else {
+          // Fallback: no projects -> use won opportunities amount; margin stays 0
+          totalRevenue = wonOpps?.reduce((sum: number, opp: any) => sum + (opp.amount || 0), 0) || 0;
+          totalMargin = 0;
+        }
+      } catch (e) {
+        // If projects or pipeline query fails, fallback safely
+        totalRevenue = wonOpps?.reduce((sum: number, opp: any) => sum + (opp.amount || 0), 0) || 0;
+        totalMargin = 0;
+      }
+
+      const marginPercentage = totalRevenue > 0 && totalMargin > 0 ? (totalMargin / totalRevenue) * 100 : 0;
+      
       const dealsClosed = wonOpps?.length || 0;
 
       // Get targets for achievement calculation
@@ -119,12 +181,19 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
       const averageDealSize = dealsClosed > 0 ? totalRevenue / dealsClosed : 0;
 
       // Calculate top performers
-      const performerMap = new Map<string, { name: string; revenue: number; deals: number }>();
+      const performerMap = new Map<string, { name: string; revenue: number; margin: number; deals: number }>();
       wonOpps?.forEach(opp => {
         const ownerId = opp.owner_id;
         const ownerName = (opp.user_profiles as any)?.full_name || 'Unknown';
-        const existing = performerMap.get(ownerId) || { name: ownerName, revenue: 0, deals: 0 };
+        const existing = performerMap.get(ownerId) || { name: ownerName, revenue: 0, margin: 0, deals: 0 };
+        
+        const pipelineItem = (opp.pipeline_items as any)?.[0];
+        const oppCosts = pipelineItem ? 
+          (pipelineItem.cost_of_goods || 0) + (pipelineItem.service_costs || 0) + (pipelineItem.other_expenses || 0) : 0;
+        const oppMargin = (opp.amount || 0) - oppCosts;
+        
         existing.revenue += opp.amount || 0;
+        existing.margin += oppMargin;
         existing.deals += 1;
         performerMap.set(ownerId, existing);
       });
@@ -135,11 +204,18 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
         .slice(0, 5);
 
       // Revenue by month
-      const monthMap = new Map<string, { revenue: number; deals: number }>();
+      const monthMap = new Map<string, { revenue: number; margin: number; deals: number }>();
       wonOpps?.forEach(opp => {
         const month = new Date(opp.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-        const existing = monthMap.get(month) || { revenue: 0, deals: 0 };
+        const existing = monthMap.get(month) || { revenue: 0, margin: 0, deals: 0 };
+        
+        const pipelineItem = (opp.pipeline_items as any)?.[0];
+        const oppCosts = pipelineItem ? 
+          (pipelineItem.cost_of_goods || 0) + (pipelineItem.service_costs || 0) + (pipelineItem.other_expenses || 0) : 0;
+        const oppMargin = (opp.amount || 0) - oppCosts;
+        
         existing.revenue += opp.amount || 0;
+        existing.margin += oppMargin;
         existing.deals += 1;
         monthMap.set(month, existing);
       });
@@ -175,6 +251,8 @@ export const useSalesSummary = (startDate?: Date, endDate?: Date) => {
 
       return {
         totalRevenue,
+        totalMargin,
+        marginPercentage,
         dealsClosed,
         targetAchievement,
         averageDealSize,

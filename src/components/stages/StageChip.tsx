@@ -19,9 +19,9 @@ export const StageChip = ({ stage, daysInStage, isOverdue, className }: StageChi
         return "default";
       case 'Closed Lost':
         return "destructive";
-      case 'Proposal / Negotiation':
+      case 'Proposal/Negotiation':
         return "default";
-      case 'Presentation / POC':
+      case 'Presentation/POC':
         return "secondary";
       case 'Approach/Discovery':
         return "secondary";

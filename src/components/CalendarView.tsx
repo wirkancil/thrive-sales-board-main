@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AddEventModal } from '@/components/modals/AddEventModal';
 import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
@@ -24,6 +25,7 @@ interface CalendarEvent {
 
 export const CalendarView: React.FC = () => {
   const { user } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -32,17 +34,58 @@ export const CalendarView: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
 
   const fetchEvents = async () => {
-    if (!user) return;
+    if (!user || !profile) return;
 
     try {
       setIsLoading(true);
       const startDate = startOfMonth(currentDate);
       const endDate = endOfMonth(currentDate);
 
+      // Determine which user IDs to fetch calendar for
+      let userIds = [user.id];
+
+      // If Manager, include team members
+      if (profile.role === 'manager') {
+        try {
+          // First try explicit team mapping
+          const { data: teamMembers } = await supabase
+            .from('manager_team_members')
+            .select('account_manager_id')
+            .eq('manager_id', profile.id);
+
+          if (teamMembers && teamMembers.length > 0) {
+            const amIds = teamMembers.map(m => m.account_manager_id);
+            const { data: amProfiles } = await supabase
+              .from('user_profiles')
+              .select('user_id')
+              .in('id', amIds);
+            
+            if (amProfiles && amProfiles.length > 0) {
+              const amUserIds = amProfiles.map(p => p.user_id).filter(Boolean);
+              userIds = [user.id, ...amUserIds];
+            }
+          } else if (profile.department_id) {
+            // Fallback to department-based team
+            const { data: deptMembers } = await supabase
+              .from('user_profiles')
+              .select('user_id')
+              .eq('department_id', profile.department_id)
+              .in('role', ['account_manager', 'staff']);
+            
+            if (deptMembers && deptMembers.length > 0) {
+              const deptUserIds = deptMembers.map(p => p.user_id).filter(Boolean);
+              userIds = [user.id, ...deptUserIds];
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching team members for calendar:', err);
+        }
+      }
+
       const { data, error } = await supabase
         .from('sales_activity_v2')
         .select('*')
-        .eq('created_by', user.id)
+        .in('created_by', userIds)
         .not('scheduled_at', 'is', null)
         .gte('scheduled_at', startDate.toISOString())
         .lte('scheduled_at', endDate.toISOString())
@@ -77,7 +120,7 @@ export const CalendarView: React.FC = () => {
 
   useEffect(() => {
     fetchEvents();
-  }, [user, currentDate]);
+  }, [user, profile, currentDate]);
 
   const handleDeleteEvent = async (eventId: string) => {
     try {

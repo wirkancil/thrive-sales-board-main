@@ -15,7 +15,7 @@ import { useAdminUsers } from '@/hooks/useAdminUsers';
 interface PendingUser {
   id: string;
   full_name: string | null;
-  role: 'admin' | 'head' | 'manager' | 'account_manager';
+  role: 'admin' | 'head' | 'manager' | 'account_manager' | 'staff';
   created_at: string;
   division_id?: string | null;
   department_id?: string | null;
@@ -40,18 +40,26 @@ export const RoleAssignmentPanel = () => {
       const { data, error } = await supabase
         .from('user_profiles')
         .select('id, full_name, role, created_at, division_id, department_id')
-        .in('role', ['account_manager', 'head', 'manager'])
+        .in('role', ['account_manager', 'head', 'manager', 'staff'] as string[])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const allUsers = (data as PendingUser[]) || [];
+      const rawUsers = (data ?? []) as any[];
+      const allUsers: PendingUser[] = rawUsers.map((u) => ({
+        id: u.id,
+        full_name: u.full_name ?? null,
+        role: (u.role ?? 'account_manager') as PendingUser['role'],
+        created_at: u.created_at,
+        division_id: u.division_id ?? null,
+        department_id: u.department_id ?? null,
+      }));
       
       // Filter to only show truly pending users based on role requirements
       const pendingUsers = allUsers.filter(user => {
         // Head role requires division_id
         if (user.role === 'head' && !user.division_id) return true;
-        // Manager and account_manager roles require department_id
-        if ((user.role === 'manager' || user.role === 'account_manager') && !user.department_id) return true;
+        // Manager, account_manager, and staff roles require department_id
+        if ((user.role === 'manager' || user.role === 'account_manager' || user.role === 'staff') && !user.department_id) return true;
         // If all requirements are met, user is not pending
         return false;
       });
@@ -60,7 +68,7 @@ export const RoleAssignmentPanel = () => {
 
       // Prefill drafts from existing assignments
       const nextAssignments: Record<string, { divisionId: string | null; departmentId: string | null }> = {};
-      const nextRoles: Record<string, UserProfile['role']> = {} as any;
+      const nextRoles: Record<string, UserProfile['role']> = {};
       for (const u of pendingUsers) {
         nextAssignments[u.id] = {
           divisionId: u.division_id ?? null,
@@ -78,7 +86,7 @@ export const RoleAssignmentPanel = () => {
     }
   };
 
-  const handleSave = async (user: any) => {
+  const handleSave = async (user: PendingUser) => {
     console.log('🔄 Starting handleSave for user:', user);
     
     const targetRole = roleDraft[user.id] || user.role;
@@ -108,9 +116,9 @@ export const RoleAssignmentPanel = () => {
       return;
     }
 
-    if ((targetRole === 'manager' || targetRole === 'account_manager') && !selectedDepartment) {
-      console.error('❌ Manager/Account Manager role requires department');
-      toast.error('Manager and Account Manager roles require a department selection');
+    if ((targetRole === 'manager' || targetRole === 'account_manager' || targetRole === 'staff') && !selectedDepartment) {
+      console.error('❌ Manager/Account Manager/Staff role requires department');
+      toast.error('Manager, Account Manager, and Staff roles require a department selection');
       return;
     }
 
@@ -203,7 +211,6 @@ export const RoleAssignmentPanel = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>
-                <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Registered</TableHead>
                 <TableHead>Role</TableHead>
@@ -225,7 +232,6 @@ export const RoleAssignmentPanel = () => {
                     <TableCell className="font-medium">
                       {user.full_name || 'No name provided'}
                     </TableCell>
-                    <TableCell>No email available</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="flex items-center gap-1 w-fit">
                         <AlertCircle className="h-3 w-3" />
@@ -246,6 +252,7 @@ export const RoleAssignmentPanel = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="account_manager">Field Sales Staff</SelectItem>
+                          <SelectItem value="staff">Staff</SelectItem>
                           <SelectItem value="head">Level Head</SelectItem>
                           <SelectItem value="manager">Level Manager</SelectItem>
                         </SelectContent>

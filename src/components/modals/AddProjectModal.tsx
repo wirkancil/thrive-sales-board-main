@@ -43,16 +43,20 @@ interface WonOpportunity {
   name: string;
   customer_id?: string;
   pipeline_id?: string;
+  stage?: string;
+  status?: string;
 }
 
 interface AddProjectModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: () => Promise<void> | void;
 }
 
 export const AddProjectModal = ({
   open,
   onOpenChange,
+  onSuccess,
 }: AddProjectModalProps) => {
   const [formData, setFormData] = useState({
     opportunity_id: "",
@@ -100,41 +104,44 @@ export const AddProjectModal = ({
   const fetchWonOpportunities = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("pipeline_items")
-        .select(
-          `
-          id,
-          opportunity_id,
-          opportunities (
-            id,
-            name,
-            customer_id,
-            pipeline_id
-          )
-        `
-        )
-        .eq("status", "won")
+      // Fetch ALL opportunities (not only won) so Account Manager can add project to any opportunity
+      // The opportunity will be auto-marked as won when project is created (via database trigger)
+      let query = supabase
+        .from("opportunities")
+        .select("id, name, customer_id, pipeline_id, owner_id, stage, status, is_won, is_closed")
+        .neq("status", "archived") // Exclude archived only
         .order("created_at", { ascending: false });
+
+      // Do not hard-filter by owner_id; rely on RLS to scope
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
       // Transform the data to match the expected WonOpportunity interface
-      const wonOpportunities =
+      // Prioritize opportunities that are NOT yet won (so Account Manager can close them)
+      const allOpportunities =
         data
-          ?.map((item) => ({
-            id: item.opportunities?.id || "",
-            name: item.opportunities?.name || "",
-            customer_id: item.opportunities?.customer_id,
-            pipeline_id: item.opportunities?.pipeline_id,
+          ?.map((item: any) => ({
+            id: item.id || "",
+            name: item.name || "",
+            customer_id: item.customer_id,
+            pipeline_id: item.pipeline_id,
+            stage: item.stage,
+            status: item.status,
+            is_won: item.is_won,
           }))
-          .filter((opp) => opp.id) || [];
+          .filter((opp: any) => opp.id)
+          .sort((a: any, b: any) => {
+            // Sort: in-progress opportunities first, then won opportunities
+            if (a.is_won === b.is_won) return 0;
+            return a.is_won ? 1 : -1;
+          }) || [];
 
-      console.log("wonOpportunities: ", wonOpportunities);
 
-      setWonOpportunities(wonOpportunities);
+      setWonOpportunities(allOpportunities);
     } catch (error) {
-      console.error("Error fetching won opportunities:", error);
+      console.error("Error fetching opportunities:", error);
     } finally {
       setLoading(false);
     }
@@ -262,19 +269,35 @@ export const AddProjectModal = ({
         const serviceCosts = Number(formData.service_costs) || 0;
         const otherExpenses = Number(formData.other_expenses) || 0;
 
-        const { error: errorUpdatePipelineItem } = await supabase
+        // Update pipeline_items costs and ensure status 'won'.
+        // Jangan bergantung pada pipeline_id agar update tetap berhasil
+        // meski opportunity tidak membawa pipeline_id.
+        let updateQuery = supabase
           .from("pipeline_items")
           .update({
+            status: 'won',
             cost_of_goods: costOfGoods,
             service_costs: serviceCosts,
             other_expenses: otherExpenses,
           })
-          .eq("opportunity_id", formData.opportunity_id)
-          .eq("pipeline_id", formData.pipeline_id);
+          .eq("opportunity_id", formData.opportunity_id);
+
+        if (formData.pipeline_id) {
+          updateQuery = updateQuery.eq("pipeline_id", formData.pipeline_id);
+        }
+
+        const { error: errorUpdatePipelineItem } = await updateQuery;
 
         if (errorUpdatePipelineItem) throw errorUpdatePipelineItem;
 
         toast.success("Project and pipeline item updated successfully");
+        if (onSuccess) {
+          try {
+            await onSuccess();
+          } catch (e) {
+            // ignore callback errors
+          }
+        }
       } catch (error) {
         console.error("Error creating project:", error);
         toast.error("Failed to create project");
@@ -342,7 +365,7 @@ export const AddProjectModal = ({
         <div className="space-y-6">
           {/* Project Name */}
           <div className="space-y-2">
-            <Label htmlFor="projectName">Project Name</Label>
+            <Label htmlFor="projectName">Select Opportunity to Close as Won</Label>
             <Select
               value={formData.opportunity_id}
               onValueChange={(id) => {
@@ -362,24 +385,27 @@ export const AddProjectModal = ({
                 <SelectValue
                   placeholder={
                     loading
-                      ? "Loading won opportunities..."
-                      : "Select won opportunity"
+                      ? "Loading opportunities..."
+                      : "Select opportunity to add project"
                   }
                 />
               </SelectTrigger>
               <SelectContent>
                 {wonOpportunities.map((opportunity) => (
                   <SelectItem key={opportunity.id} value={opportunity.id}>
-                    {opportunity.name}
+                    {opportunity.name} {opportunity.is_won ? "✅ Already Won" : opportunity.stage ? `— ${opportunity.stage}` : "— In Progress"}
                   </SelectItem>
                 ))}
                 {wonOpportunities.length === 0 && !loading && (
                   <SelectItem value="Choose an option">
-                    No won opportunities available
+                    No opportunities available
                   </SelectItem>
                 )}
               </SelectContent>
             </Select>
+            <p className="text-sm text-muted-foreground">
+              Creating a project will automatically mark the opportunity as "Closed Won"
+            </p>
           </div>
 
           {/* PO Number */}

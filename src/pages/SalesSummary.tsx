@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,8 +60,7 @@ const SalesSummary = () => {
   const dateRange = "Sep 1 - Sep 30, 2025";
 
   // Fetch all data
-  useEffect(() => {
-    const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
       if (!user) return;
 
       try {
@@ -71,49 +70,93 @@ const SalesSummary = () => {
         let scopeOwnerIds: string[] = [user.id];
         let scopeProfileIds: string[] = [];
 
-        // Get current user profile
-        const { data: myProfile } = await supabase
+        // Get current user profile (minimize type inference)
+        const myProfileQuery: any = (supabase as any)
           .from("user_profiles")
-          .select("id, role, department_id, division_id, entity_id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+          .select("id, role, department_id, division_id, entity_id, user_id")
+          .eq("user_id", user.id);
+        const myProfileResult: any = await myProfileQuery.maybeSingle();
+        if (myProfileResult?.error) throw myProfileResult.error;
+        const myProfile: any = myProfileResult?.data ?? null;
 
         if (myProfile?.role === "manager") {
-          // Prefer team mapping
-          const { data: teamMap } = await supabase
+          // For ACTUAL REVENUE: include Manager + team members (Account Managers)
+          // For TARGET: only Manager's own target (from Head)
+          const teamMapRes: any = await supabase
             .from("manager_team_members")
             .select("account_manager_id")
             .eq("manager_id", myProfile.id);
+          const teamMap = teamMapRes?.data || [];
           const amProfileIds = (teamMap || []).map((t: any) => t.account_manager_id);
+          
+          
           if (amProfileIds.length > 0) {
-            const { data: amUsers } = await supabase
+            const amUsersRes: any = await supabase
               .from("user_profiles")
-              .select("id, user_id")
+              .select("id, user_id, full_name")
               .in("id", amProfileIds);
-            scopeOwnerIds = (amUsers || []).map((u: any) => u.user_id).filter(Boolean);
-            scopeProfileIds = (amUsers || []).map((u: any) => u.id).filter(Boolean);
+            const amUsers = amUsersRes?.data || [];
+            
+            
+            // scopeOwnerIds = revenue dari Manager + Account Managers
+            const amUserIds = (amUsers || []).map((u: any) => u.user_id).filter(Boolean);
+            scopeOwnerIds = [user.id, ...amUserIds];
+            // scopeProfileIds = target dari Manager sendiri (bukan dari AMs)
+            scopeProfileIds = [myProfile.id];
           } else if (myProfile.department_id) {
-            const { data: deptUsers } = await supabase
+            
+            const deptUsersRes: any = await supabase
               .from("user_profiles")
-              .select("id, user_id")
-              .eq("department_id", myProfile.department_id);
-            scopeOwnerIds = (deptUsers || []).map((u: any) => u.user_id).filter(Boolean);
-            scopeProfileIds = (deptUsers || []).map((u: any) => u.id).filter(Boolean);
+              .select("id, user_id, full_name")
+              .eq("department_id", myProfile.department_id)
+              .eq("role", "account_manager");
+            const deptUsers = deptUsersRes?.data || [];
+            
+            
+            // scopeOwnerIds = revenue dari Manager + Account Managers di department
+            const amUserIds = (deptUsers || []).map((u: any) => u.user_id).filter(Boolean);
+            scopeOwnerIds = [user.id, ...amUserIds];
+            // scopeProfileIds = target dari Manager sendiri saja
+            scopeProfileIds = [myProfile.id];
+          } else {
+            // Fallback terakhir: coba cari semua Account Managers yang tidak punya manager
+            
+            const allAmsRes: any = await supabase
+              .from("user_profiles")
+              .select("id, user_id, full_name, department_id")
+              .eq("role", "account_manager")
+              .eq("is_active", true);
+            const allAms = allAmsRes?.data || [];
+            
+            // Filter AMs yang belum di-assign ke manager lain atau di department yang sama (null)
+            const unassignedAms = allAms.filter((am: any) => !am.department_id);
+            
+            
+            if (unassignedAms.length > 0) {
+              const amUserIds = unassignedAms.map((u: any) => u.user_id).filter(Boolean);
+              scopeOwnerIds = [user.id, ...amUserIds];
+            } else {
+              scopeOwnerIds = [user.id];
+            }
+            scopeProfileIds = [myProfile.id];
           }
+          
         } else if (myProfile?.role === "head") {
           if (myProfile.division_id) {
-            const { data: divUsers } = await supabase
+            const divUsersRes: any = await supabase
               .from("user_profiles")
               .select("id, user_id")
               .eq("division_id", myProfile.division_id);
+            const divUsers = divUsersRes?.data || [];
             scopeOwnerIds = (divUsers || []).map((u: any) => u.user_id).filter(Boolean);
             scopeProfileIds = (divUsers || []).map((u: any) => u.id).filter(Boolean);
           }
         } else if (myProfile?.role === "admin") {
-          const { data: allUsers } = await supabase
+          const allUsersRes: any = await supabase
             .from("user_profiles")
             .select("id, user_id")
             .eq("is_active", true);
+          const allUsers = allUsersRes?.data || [];
           scopeOwnerIds = (allUsers || []).map((u: any) => u.user_id).filter(Boolean);
           scopeProfileIds = (allUsers || []).map((u: any) => u.id).filter(Boolean);
         } else {
@@ -122,42 +165,100 @@ const SalesSummary = () => {
           scopeProfileIds = myProfile?.id ? [myProfile.id] : [];
         }
 
-        // Fetch opportunities data for scope
-        let oppQuery = supabase
+        // Fetch opportunities data for scope (digunakan untuk metrik non-revenue/margin)
+        const oppRes: any = await supabase
           .from("opportunities")
-          .select("id, amount, status, stage, is_won, is_closed, expected_close_date")
+          .select("id, amount, status, stage, is_won, is_closed, expected_close_date, owner_id")
           .in("owner_id", scopeOwnerIds);
-        const { data: opportunities, error: oppError } = await oppQuery;
-        if (oppError) throw oppError;
-
-        // Calculate total revenue (won opportunities only)
-        const wonOpps = (opportunities || []).filter(
+        if (oppRes?.error) throw oppRes.error;
+        const opportunities: any[] = oppRes?.data || [];
+        
+        
+        // Hitung Revenue dan Margin
+        const opportunityIds = (opportunities || []).map((o: any) => o.id);
+        const wonOppsEarly = (opportunities || []).filter(
           (opp: any) =>
             (opp.status === "won" || opp.is_won === true || opp.stage === "Closed Won") &&
             opp.status !== "archived"
         );
-        const wonAmountForRevenue = wonOpps.reduce((sum: number, opp: any) => sum + (opp.amount || 0), 0) || 0;
-        setTotalRevenue(wonAmountForRevenue);
+        const wonOpportunityIdsEarly = (wonOppsEarly || []).map((o: any) => o.id);
+        
 
-        // Calculate margin from pipeline_items costs for won opportunities
-        const wonOpportunityIds = wonOpps.map((opp: any) => opp.id);
+        let projects: any[] = [];
+        let actualRevenue = 0;
+        let costBaseOpportunityIds: string[] = [];
+        let usedProjectFallback = false;
+        if (opportunityIds.length > 0) {
+          const projRes: any = await supabase
+            .from("projects")
+            .select("id, po_amount, opportunity_id")
+            .in("opportunity_id", opportunityIds);
+          if (projRes?.error) {
+            // Fallback aman: bila fetch projects gagal (404/403/42P01),
+            // gunakan revenue dari won opportunities agar UI tetap berfungsi.
+            console.warn("Projects fetch failed, falling back to opportunities:", projRes.error);
+            projects = [];
+            actualRevenue = (wonOppsEarly || []).reduce(
+              (sum: number, o: any) => sum + (Number(o.amount) || 0),
+              0
+            );
+            costBaseOpportunityIds = wonOpportunityIdsEarly;
+            usedProjectFallback = true;
+          } else {
+            projects = projRes?.data || [];
+            actualRevenue = (projects || []).reduce(
+              (sum: number, p: any) => sum + (Number(p.po_amount) || 0),
+              0
+            );
+            costBaseOpportunityIds = (projects || [])
+              .map((p: any) => p.opportunity_id)
+              .filter(Boolean);
+            
+            
+            // Jika tidak ada project, fallback ke won opportunity
+            if (!costBaseOpportunityIds.length || actualRevenue === 0) {
+              actualRevenue = (wonOppsEarly || []).reduce(
+                (sum: number, o: any) => sum + (Number(o.amount) || 0),
+                0
+              );
+              costBaseOpportunityIds = wonOpportunityIdsEarly;
+              usedProjectFallback = true;
+            }
+          }
+        }
+        
+        setTotalRevenue(actualRevenue);
+
+        // Hitung margin dari pipeline items atau fallback
         let totalMargin = 0;
-        if (wonOpportunityIds.length > 0) {
-          const { data: pipelineItems, error: pipelineError } = await supabase
+        if (costBaseOpportunityIds.length > 0) {
+          const pipeRes: any = await supabase
             .from("pipeline_items")
-            .select("opportunity_id, cost_of_goods, service_costs, other_expenses")
-            .in("opportunity_id", wonOpportunityIds);
-          if (pipelineError) throw pipelineError;
-          const totalCosts = (pipelineItems || []).reduce((sum: number, item: any) => {
-            const cogs = item.cost_of_goods || 0;
-            const svc = item.service_costs || 0;
-            const other = item.other_expenses || 0;
-            return sum + cogs + svc + other;
-          }, 0);
-          totalMargin = wonAmountForRevenue - totalCosts;
+            .select(
+              "opportunity_id, cost_of_goods, service_costs, other_expenses, status"
+            )
+            .in("opportunity_id", costBaseOpportunityIds);
+          if (pipeRes?.error) {
+            console.warn('[Manager Sales Summary] Pipeline items fetch failed:', pipeRes.error);
+          } else {
+            const wonPipelineItems = (pipeRes?.data || []).filter((item: any) => 
+              item.status === "won" || wonOpportunityIdsEarly.includes(item.opportunity_id)
+            );
+            const totalCosts = (wonPipelineItems || []).reduce(
+              (sum: number, item: any) => {
+                const cogs = Number(item.cost_of_goods) || 0;
+                const svc = Number(item.service_costs) || 0;
+                const other = Number(item.other_expenses) || 0;
+                return sum + cogs + svc + other;
+              },
+              0
+            );
+            totalMargin = actualRevenue - totalCosts;
+          }
         }
 
         // Calculate deals closed (won/lost) in scope
+        const wonOpps = wonOppsEarly;
         const wonDeals = wonOpps.length;
         const lostDeals = (opportunities || []).filter(
           (opp: any) => opp.status === "lost" || opp.stage === "Closed Lost"
@@ -169,24 +270,24 @@ const SalesSummary = () => {
         let targetsRevenue = 0;
         let targetsMargin = 0;
         if (scopeProfileIds.length > 0) {
-          const { data: teamTargets, error: targetError } = await supabase
+          const targetRes: any = await supabase
             .from("sales_targets")
             .select("amount, measure, period_start, period_end")
             .in("assigned_to", scopeProfileIds)
             .lte("period_start", todayStr)
             .gte("period_end", todayStr);
-          if (targetError) console.warn("Error fetching team targets:", targetError);
-          (teamTargets || []).forEach((t: any) => {
+          if (targetRes?.error) console.warn("Error fetching team targets:", targetRes.error);
+          (targetRes?.data || []).forEach((t: any) => {
             if (t.measure === "revenue") targetsRevenue += Number(t.amount) || 0;
             if (t.measure === "margin") targetsMargin += Number(t.amount) || 0;
           });
         }
 
         // Set achievement state (team-scoped for manager/head/admin; self for AM)
-        const revenuePercentage = targetsRevenue > 0 ? (wonAmountForRevenue / targetsRevenue) * 100 : 0;
+        const revenuePercentage = targetsRevenue > 0 ? (actualRevenue / targetsRevenue) * 100 : 0;
         const marginPercentage = targetsMargin > 0 ? (totalMargin / targetsMargin) * 100 : 0;
         setAchievement({
-          revenue: { actual: wonAmountForRevenue, target: targetsRevenue, percentage: revenuePercentage },
+          revenue: { actual: actualRevenue, target: targetsRevenue, percentage: revenuePercentage },
           margin: { actual: totalMargin, target: targetsMargin, percentage: marginPercentage },
         });
 
@@ -286,10 +387,11 @@ const SalesSummary = () => {
       } finally {
         setLoading(false);
       }
-    };
+    }, [user]);
 
+  useEffect(() => {
     fetchAllData();
-  }, [user]);
+  }, [user, fetchAllData]);
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("id-ID", {
@@ -516,7 +618,7 @@ const SalesSummary = () => {
         </Card>
       </div>
 
-      <AddProjectModal open={showAddProjectModal} onOpenChange={setShowAddProjectModal} />
+      <AddProjectModal open={showAddProjectModal} onOpenChange={setShowAddProjectModal} onSuccess={fetchAllData} />
     </div>
   );
 };

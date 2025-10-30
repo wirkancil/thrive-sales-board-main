@@ -58,10 +58,11 @@ export default function OpportunityDetailModal({ isOpen, onClose, opportunityId 
     }
   }, [isOpen, opportunityId]);
 
-  // Fetch loss reasons when modal opens and opportunity is Closed Lost
+  // Untuk Closed Lost, fetch label loss_reasons dari DB (jika ada) dan ambil catatan aktivitas terbaru sebagai fallback
   useEffect(() => {
     const shouldFetch = opportunity && (opportunity.stage === 'Closed Lost' || opportunity.status === 'lost');
     if (isOpen && shouldFetch) {
+      // Fetch loss reasons
       (async () => {
         try {
           const { data, error } = await supabase
@@ -73,7 +74,7 @@ export default function OpportunityDetailModal({ isOpen, onClose, opportunityId 
           setLossReasons(data || []);
         } catch (err) {
           console.error('Error fetching loss reasons:', err);
-          toast.error('Gagal memuat daftar loss reason');
+          // Biarkan lossReasons kosong; UI akan pakai lossNote sebagai fallback
         }
       })();
 
@@ -149,11 +150,11 @@ export default function OpportunityDetailModal({ isOpen, onClose, opportunityId 
         return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'Qualification':
         return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Approach/Discovery':
+      case 'Discovery':
         return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'Presentation / POC':
+      case 'Presentation/POC':
         return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'Proposal/Negotiation':
+      case 'Negotiation':
         return 'bg-indigo-100 text-indigo-800 border-indigo-200';
       case 'Closed Won':
         return 'bg-green-100 text-green-800 border-green-200';
@@ -319,7 +320,7 @@ export default function OpportunityDetailModal({ isOpen, onClose, opportunityId 
                     )}
                     {opportunity.approach_discovery_details && (
                       <div>
-                        <div className="text-sm font-medium mb-1">Approach/Discovery Details</div>
+                        <div className="text-sm font-medium mb-1">Discovery Details</div>
                         <p className="text-sm bg-white p-3 rounded border">{opportunity.approach_discovery_details}</p>
                       </div>
                     )}
@@ -355,7 +356,8 @@ export default function OpportunityDetailModal({ isOpen, onClose, opportunityId 
                 <div className="text-sm text-muted-foreground">
                   Saat ini: {(() => {
                     const label = lossReasons.find(r => r.id === (opportunity.lost_reason_id || ''))?.label;
-                    return label || 'Belum diisi';
+                    // Jika belum ada label terpilih, gunakan catatan aktivitas sebagai fallback
+                    return label || (lossNote ? lossNote : 'Belum diisi');
                   })()}
                 </div>
                 {lossNote && (

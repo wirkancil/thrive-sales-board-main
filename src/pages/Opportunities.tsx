@@ -78,8 +78,8 @@ const Opportunities = () => {
     switch (stage) {
       case 'Prospecting': return 'bg-blue-100 text-blue-800';
       case 'Qualification': return 'bg-yellow-100 text-yellow-800';
-      case 'Approach/Discovery': return 'bg-orange-100 text-orange-800';
-      case 'Presentation / POC': return 'bg-purple-100 text-purple-800';
+      case 'Discovery': return 'bg-orange-100 text-orange-800';
+      case 'Presentation/POC': return 'bg-purple-100 text-purple-800';
       case 'Closed Won': return 'bg-green-100 text-green-800';
       case 'Closed Lost': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -264,27 +264,27 @@ const Opportunities = () => {
           </div>
         </div>
 
-        {/* Presentation / POC Stage */}
+        {/* Presentation/POC Stage */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold">Presentation / POC (60%)</h2>
+              <h2 className="text-xl font-semibold">Presentation/POC (60%)</h2>
               <p className="text-sm text-muted-foreground">Demo/POC done, success metrics agreed, readout scheduled</p>
             </div>
             <Badge variant="outline" className="text-sm">
-              {opportunities.filter(o => o.stage === 'Presentation / POC').length}
+              {opportunities.filter(o => o.stage === 'Presentation/POC').length}
             </Badge>
           </div>
           <div className="text-lg font-bold mb-4">
-            <CurrencyDisplay amount={opportunities.filter(o => o.stage === 'Presentation / POC').reduce((sum, o) => sum + (o.amount || 0), 0)} />
+            <CurrencyDisplay amount={opportunities.filter(o => o.stage === 'Presentation/POC').reduce((sum, o) => sum + (o.amount || 0), 0)} />
           </div>
-          {opportunities.filter(o => o.stage === 'Presentation / POC').length === 0 ? (
+          {opportunities.filter(o => o.stage === 'Presentation/POC').length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               No opportunities in this stage
             </div>
           ) : (
             <div className="grid gap-4">
-              {opportunities.filter(o => o.stage === 'Presentation / POC').map((opportunity) => (
+              {opportunities.filter(o => o.stage === 'Presentation/POC').map((opportunity) => (
                 <OpportunityCard 
                   key={opportunity.id} 
                   opportunity={opportunity}

@@ -123,7 +123,7 @@ export default function PipelineManagement() {
     ? opportunities.reduce((sum, item) => sum + item.probability, 0) / opportunities.length 
     : 0;
 
-  const proposalDeals = opportunities.filter(item => item.stage === 'Proposal / Negotiation');
+  const proposalDeals = opportunities.filter(item => item.stage === 'Proposal/Negotiation');
   const wonDeals = opportunities.filter(item => item.stage === 'Closed Won' || (item.is_closed && item.is_won));
   const lostDeals = opportunities.filter(item => item.stage === 'Closed Lost' || (item.is_closed && !item.is_won));
 
@@ -305,9 +305,9 @@ export default function PipelineManagement() {
 
           {/* Kanban Board - Manager Pipeline View */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {["Proposal / Negotiation", "Closed Won", "Closed Lost"].map(stageName => {
+            {["Proposal/Negotiation", "Closed Won", "Closed Lost"].map(stageName => {
               const stageOpportunities = opportunities.filter(opp => {
-                if (stageName === "Proposal / Negotiation") return opp.stage === "Proposal / Negotiation";
+                if (stageName === "Proposal/Negotiation") return opp.stage === "Proposal/Negotiation";
                 if (stageName === "Closed Won") return opp.stage === "Closed Won" || opp.status === "won";
                 if (stageName === "Closed Lost") return opp.stage === "Closed Lost" || opp.status === "lost";
                 return false;

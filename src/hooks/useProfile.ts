@@ -7,8 +7,9 @@ export interface UserProfile {
   id: string;
   user_id?: string; // auth uid reference (optional for mock/admin)
   full_name: string | null;
-  role: 'account_manager' | 'manager' | 'head' | 'admin';
-  department: string | null;
+  role: 'account_manager' | 'staff' | 'manager' | 'head' | 'admin';
+  // Keep optional for UI compatibility, but not persisted in DB
+  department?: string | null;
   created_at: string;
   preferences: any | null;
   division_id: string | null;
@@ -186,17 +187,17 @@ export const useProfile = () => {
       console.error('Error fetching profile:', err);
       // Fallback: if this is the special admin user, provide mock admin profile even on error
       if (user && user.id === '3212a172-b6c8-417c-811a-735cc0033041') {
-        const adminProfile: UserProfile = {
-          id: user.id,
-          user_id: user.id,
-          full_name: 'System Administrator',
-          role: 'admin',
-          department: null,
-          created_at: new Date().toISOString(),
-          preferences: null,
-          division_id: null,
-          department_id: null,
-          team_id: null,
+      const adminProfile: UserProfile = {
+        id: user.id,
+        user_id: user.id,
+        full_name: 'System Administrator',
+        role: 'admin',
+        department: null,
+        created_at: new Date().toISOString(),
+        preferences: null,
+        division_id: null,
+        department_id: null,
+        team_id: null,
           is_active: true,
           title_id: null,
           region_id: null,
@@ -229,10 +230,11 @@ export const useProfile = () => {
     if (!user || !profile) return { error: 'No user or profile found' };
 
     try {
-      // @ts-expect-error Supabase generic types can cause deep instantiation errors here
+      // Remove non-DB fields to avoid PostgREST schema errors
+      const { department, ...safeUpdates } = updates as any;
       const { data, error } = await supabase
         .from('user_profiles')
-        .update(updates as any)
+        .update(safeUpdates as any)
         .eq('user_id', user.id)
         .select()
         .single();
@@ -248,9 +250,89 @@ export const useProfile = () => {
   };
 
   useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        
+        const { data: existingProfile, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+
+        if (error) {
+          console.error('Error fetching profile:', error);
+          throw error;
+        }
+
+        if (existingProfile) {
+          setProfile(existingProfile);
+        } else {
+          // Create default profile for new users
+          const defaultProfile = {
+            id: user.id,
+            user_id: user.id,
+            full_name: user.email?.split('@')[0] || 'User',
+            role: 'account_manager' as const,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+
+          const { data: newProfile, error: insertError } = await supabase
+            .from('user_profiles')
+            .insert([defaultProfile])
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error('Error creating profile:', insertError);
+            throw insertError;
+          }
+
+          setProfile(newProfile);
+        }
+
+        // Handle admin user bootstrapping
+        if (user.email === 'admin@thrive.com') {
+          const { error: updateError } = await supabase
+            .from('user_profiles')
+            .update({ role: 'admin' })
+            .eq('user_id', user.id);
+
+          if (updateError) {
+            console.error('Error updating admin role:', updateError);
+          } else {
+            // Refresh profile after role update
+            const { data: updatedProfile } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('user_id', user.id)
+              .single();
+            
+            if (updatedProfile) {
+              setProfile(updatedProfile);
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('Profile fetch error:', error);
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (!authLoading) {
       if (user) {
-        fetchProfile(user);
+        fetchProfile();
       } else {
         setProfile(null);
         setLoading(false);

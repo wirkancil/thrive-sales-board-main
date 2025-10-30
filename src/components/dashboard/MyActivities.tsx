@@ -35,8 +35,8 @@ export const MyActivities: React.FC = () => {
             scheduled_at,
             status,
             notes,
-            organizations!sales_activity_v2_customer_id_fkey(name),
-            opportunities!sales_activity_v2_opportunity_id_fkey(name)
+            customer_name,
+            opportunity_id
           `)
           .eq('created_by', user.user.id)
           .order('scheduled_at', { ascending: false })
@@ -68,8 +68,8 @@ export const MyActivities: React.FC = () => {
         if (activitiesData) {
           const formattedActivities = activitiesData.map(activity => ({
             ...activity,
-            customer_name: activity.organizations?.name || 'Unknown Customer',
-            opportunity_name: activity.opportunities?.name
+            customer_name: activity.customer_name || 'Unknown Customer',
+            opportunity_name: undefined // opportunity_id is available but we'd need to join to get name
           }));
           setActivities(formattedActivities);
         }

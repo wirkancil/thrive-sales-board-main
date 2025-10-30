@@ -3927,8 +3927,8 @@ export type Database = {
         | "Prospecting"
         | "Qualification"
         | "Approach/Discovery"
-        | "Presentation / POC"
-        | "Proposal / Negotiation"
+        | "Presentation/POC"
+        | "Proposal/Negotiation"
         | "Closed Won"
         | "Closed Lost"
       user_status_enum:
@@ -4101,8 +4101,8 @@ export const Constants = {
         "Prospecting",
         "Qualification",
         "Approach/Discovery",
-        "Presentation / POC",
-        "Proposal / Negotiation",
+        "Presentation/POC",
+        "Proposal/Negotiation",
         "Closed Won",
         "Closed Lost",
       ],

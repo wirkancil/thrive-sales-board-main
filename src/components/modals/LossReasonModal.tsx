@@ -33,8 +33,19 @@ export default function LossReasonModal({
   const [selectedReasonId, setSelectedReasonId] = useState<string>("");
   const [comments, setComments] = useState("");
 
-  // Fetch loss reasons
+  // Fetch loss reasons dari DB; fallback ke daftar statis jika gagal/ kosong
   useEffect(() => {
+    const STATIC_REASONS = [
+      'Budget constraints',
+      'Timeline mismatch',
+      'Chose competitor',
+      'No decision',
+      'Scope changed',
+      'Requirements not met',
+      'Feature gap vs requirements',
+      'Pricing outside approval threshold'
+    ];
+
     const fetchLossReasons = async () => {
       try {
         const { data, error } = await supabase
@@ -42,12 +53,20 @@ export default function LossReasonModal({
           .select('id, label')
           .eq('active', true)
           .order('label');
-
         if (error) throw error;
-        setLossReasons(data || []);
-      } catch (error) {
-        console.error('Error fetching loss reasons:', error);
-        toast.error('Failed to load loss reasons');
+        const rows = data || [];
+        if (!rows.length) {
+          setLossReasons(
+            STATIC_REASONS.map((label) => ({ id: `static-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, label }))
+          );
+        } else {
+          setLossReasons(rows);
+        }
+      } catch (err) {
+        console.error('Error fetching loss reasons:', err);
+        setLossReasons(
+          STATIC_REASONS.map((label) => ({ id: `static-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, label }))
+        );
       }
     };
 
@@ -78,8 +97,8 @@ export default function LossReasonModal({
         .update({
           status: 'lost',
           stage: 'Closed Lost',
-          lost_reason_id: selectedReasonId,
-          close_date: new Date().toISOString().split('T')[0],
+          lost_reason_id: selectedReasonId.startsWith('static-') ? null : selectedReasonId,
+          expected_close_date: new Date().toISOString().split('T')[0],
           updated_at: new Date().toISOString()
         })
         .eq('id', opportunityId);
@@ -89,7 +108,7 @@ export default function LossReasonModal({
       // Sinkronkan status pipeline item
       const { error: pipelineError } = await supabase
         .from('pipeline_items')
-        .update({ status: 'lost', updated_at: new Date().toISOString() })
+        .update({ status: 'lost' })
         .eq('opportunity_id', opportunityId);
 
       if (pipelineError) throw pipelineError;
